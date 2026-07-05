@@ -40,6 +40,7 @@ export function useChatSession({
   const statusRef = useRef(status);
   const messagesRef = useRef(messages);
   const cwdRef = useRef(cwd);
+  const lastSentTextRef = useRef<string>("");
 
   useEffect(() => {
     statusRef.current = status;
@@ -155,6 +156,7 @@ export function useChatSession({
   const sendMessage = useCallback(
     async (text: string) => {
       if (statusRef.current !== "running") return;
+      lastSentTextRef.current = text;
 
       const userMsg: Message = {
         id: `user-${Date.now()}`,
@@ -193,6 +195,7 @@ export function useChatSession({
   const respondToPrompt = useCallback(
     async (messageId: string, responseText: string) => {
       if (statusRef.current !== "running") return;
+      lastSentTextRef.current = responseText;
 
       const userMsg: Message = {
         id: `user-res-${Date.now()}`,
@@ -267,8 +270,27 @@ export function useChatSession({
         onRawOutput(raw);
       }
 
-      const cleanText = cleanTerminalOutput(raw);
-      if (!cleanText) return;
+      let cleanText = cleanTerminalOutput(raw);
+      
+      // Check if agy has returned to interactive prompt input mode (? for shortcuts)
+      const hasAgyPrompt = raw.includes("? for shortcuts") || raw.includes("shortcuts") || cleanText.includes("shortcuts");
+
+      // Filter out user's last sent query echo-back from the chat bubble
+      const lastSent = lastSentTextRef.current;
+      if (lastSent && cleanText.includes(lastSent)) {
+        cleanText = cleanText.replace(lastSent, "");
+      }
+
+      // Also clean duplicate echoing of prompt/input sequences (e.g. '現現現現...')
+      if (lastSent) {
+        const firstChar = lastSent.charAt(0);
+        if (firstChar && firstChar.trim()) {
+          const repRegex = new RegExp(`${firstChar}{2,}`, "g");
+          cleanText = cleanText.replace(repRegex, "");
+        }
+      }
+
+      if (!cleanText.trim() && !hasAgyPrompt) return;
 
       outputBuffer += cleanText;
 
@@ -278,18 +300,19 @@ export function useChatSession({
           outputBuffer = "";
           flushTimer = null;
 
-          if (!textToAppend) return;
-
           setMessages((prev) => {
             if (prev.length === 0) return prev;
             const lastMsg = prev[prev.length - 1];
 
-            if (lastMsg.sender === "assistant" && lastMsg.status === "thinking") {
+            const nextStatus = hasAgyPrompt ? ("completed" as const) : lastMsg.status;
+
+            if (lastMsg.sender === "assistant") {
               return [
                 ...prev.slice(0, -1),
                 {
                   ...lastMsg,
                   content: lastMsg.content + textToAppend,
+                  status: nextStatus,
                 },
               ];
             } else {
@@ -300,7 +323,7 @@ export function useChatSession({
                   sender: "assistant",
                   content: textToAppend,
                   timestamp: Date.now(),
-                  status: "thinking",
+                  status: hasAgyPrompt ? ("completed" as const) : ("thinking" as const),
                 },
               ];
             }
