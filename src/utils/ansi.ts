@@ -40,7 +40,19 @@ export function cleanTerminalOutput(text: string): string {
   
   // Normalize carriage returns and line feeds
   cleaned = cleaned.replace(/\r\n/g, "\n");
-  cleaned = cleaned.replace(/\r/g, "");
+  
+  // Simulate carriage returns (overwriting text from the beginning of the line)
+  const rawLines = cleaned.split("\n");
+  const crProcessedLines = rawLines.map((line) => {
+    if (!line.includes("\r")) return line;
+    const parts = line.split("\r");
+    let result = "";
+    for (const part of parts) {
+      result = part + result.slice(part.length);
+    }
+    return result;
+  });
+  cleaned = crProcessedLines.join("\n");
   
   // Split into lines to filter out system prompt/nav rows completely
   const lines = cleaned.split("\n");

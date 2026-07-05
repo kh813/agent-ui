@@ -19,7 +19,7 @@ console.log("✓ Test 2: cleanTerminalOutput (backspaces) passed");
 
 // Test 3: Normalize carriage returns
 assert.strictEqual(cleanTerminalOutput("line1\r\nline2"), "line1\nline2");
-assert.strictEqual(cleanTerminalOutput("line1\rline2"), "line1line2");
+assert.strictEqual(cleanTerminalOutput("line1\rline2"), "line2");
 console.log("✓ Test 3: cleanTerminalOutput (carriage returns) passed");
 
 console.log("All frontend utility tests passed successfully!");
