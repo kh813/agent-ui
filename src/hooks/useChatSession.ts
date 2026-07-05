@@ -26,9 +26,10 @@ export interface Message {
 function removeOverlay(existing: string, incoming: string): string {
   if (!existing || !incoming) return incoming;
   
-  // Clean up trailing/leading spaces for robust matching
+  const minThreshold = 6; // Avoid stripping short partial matches (false positives on spaces, punctuation, etc.)
   const maxSearch = Math.min(existing.length, incoming.length, 500);
-  for (let len = maxSearch; len > 0; len--) {
+  
+  for (let len = maxSearch; len >= minThreshold; len--) {
     const suffix = existing.slice(-len);
     const prefix = incoming.slice(0, len);
     if (suffix === prefix) {
