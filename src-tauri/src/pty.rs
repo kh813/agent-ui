@@ -57,7 +57,17 @@ pub fn detect_prompts(text: &str) -> Option<PtyPromptPayload> {
         });
     }
 
-    // 2. Y/N Confirmation
+    // 2. Folder Trust Check (Do you trust the contents of this project?)
+    if text.contains("Do you trust the contents of this project?") || text.contains("Yes, I trust this folder") {
+        return Some(PtyPromptPayload {
+            prompt_type: "confirm".to_string(),
+            message: "Do you trust the contents of this project? Antigravity CLI requires permission to read, edit, and execute files here.".to_string(),
+            options: Some(vec!["Yes, I trust this folder".to_string(), "No, exit".to_string()]),
+            url: None,
+        });
+    }
+
+    // 3. Y/N Confirmation
     // Proceed [y/N], Confirm [yes/no], procedd (y/n), Are you sure? [y/N]
     let confirm_re = Regex::new(r"(?i)(confirm|proceed|are you sure|y/n|yes/no)[\s\S]*?\[([yY]/[nN]|[yY]es/[nN]o)\]").unwrap();
     if confirm_re.is_match(text) {
@@ -69,7 +79,7 @@ pub fn detect_prompts(text: &str) -> Option<PtyPromptPayload> {
         });
     }
 
-    // 3. Path Input prompt
+    // 4. Path Input prompt
     let path_re = Regex::new(r"(?i)(enter|select|input)\s+[\s\S]*?(path|folder|directory|destination)").unwrap();
     if path_re.is_match(text) {
         return Some(PtyPromptPayload {

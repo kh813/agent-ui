@@ -17,6 +17,15 @@ export function stripAnsi(text: string): string {
 export function cleanTerminalOutput(text: string): string {
   let cleaned = stripAnsi(text);
   
+  // Remove braille patterns (loading spinners)
+  cleaned = cleaned.replace(/[\u2800-\u28FF]/g, "");
+  
+  // Remove proprietary terminal escape fragments (like '4m0;1u', '4;2m1;1u', etc.)
+  cleaned = cleaned.replace(/\b\d+m\d+;\d+u/g, "");
+  cleaned = cleaned.replace(/\b\d+;\d+m\d+;\d+u/g, "");
+  cleaned = cleaned.replace(/\b\d+;\d+u/g, "");
+  cleaned = cleaned.replace(/[a-zA-Z\d]+;\d+u/g, "");
+  
   // Normalize carriage returns and line feeds
   cleaned = cleaned.replace(/\r\n/g, "\n");
   cleaned = cleaned.replace(/\r/g, "\n");
