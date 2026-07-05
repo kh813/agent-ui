@@ -226,8 +226,15 @@ export function useChatSession({
         return [...updatedMessages, userMsg, nextAssistantMsg];
       });
 
+      let inputToSend = responseText + "\n";
+      if (responseText === "Yes, I trust this folder") {
+        inputToSend = "\r";
+      } else if (responseText === "No, exit") {
+        inputToSend = "\u001b[B\r";
+      }
+
       try {
-        await invoke("write_to_pty", { input: responseText + "\n" });
+        await invoke("write_to_pty", { input: inputToSend });
       } catch (e: any) {
         console.error("Failed to write response to PTY:", e);
       }

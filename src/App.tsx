@@ -440,21 +440,36 @@ function App() {
                                 </div>
                                 
                                 {msg.prompt.prompt_type === "confirm" && (
-                                  <div style={{ display: "flex", gap: "8px" }}>
-                                    <button 
-                                      className="primary" 
-                                      onClick={() => respondToPrompt(msg.id, "y")}
-                                      style={{ padding: "6px 16px" }}
-                                    >
-                                      はい (Yes)
-                                    </button>
-                                    <button 
-                                      className="secondary" 
-                                      onClick={() => respondToPrompt(msg.id, "n")}
-                                      style={{ padding: "6px 16px" }}
-                                    >
-                                      いいえ (No)
-                                    </button>
+                                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                                    {msg.prompt.options ? (
+                                      msg.prompt.options.map((opt: string) => (
+                                        <button 
+                                          key={opt}
+                                          className={opt.toLowerCase().includes("no") || opt.toLowerCase().includes("exit") ? "secondary" : "primary"}
+                                          onClick={() => respondToPrompt(msg.id, opt)}
+                                          style={{ padding: "6px 16px" }}
+                                        >
+                                          {opt}
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <>
+                                        <button 
+                                          className="primary" 
+                                          onClick={() => respondToPrompt(msg.id, "y")}
+                                          style={{ padding: "6px 16px" }}
+                                        >
+                                          はい (Yes)
+                                        </button>
+                                        <button 
+                                          className="secondary" 
+                                          onClick={() => respondToPrompt(msg.id, "n")}
+                                          style={{ padding: "6px 16px" }}
+                                        >
+                                          いいえ (No)
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 )}
                                 
