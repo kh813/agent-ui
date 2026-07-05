@@ -125,6 +125,22 @@ pub async fn detect_agent_internal<R: tauri::Runtime>(
     let config = configs.get(&agent_id).ok_or_else(|| format!("Unknown agent: {}", agent_id))?;
 
     let is_windows = cfg!(target_os = "windows");
+    let mut found_path: Option<String> = None;
+
+    // 0. Scan application local subdirectory `./bin/` (highly preferred for portable ZIP config)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let local_bin_name = if is_windows {
+                format!("{}.exe", config.binary)
+            } else {
+                config.binary.clone()
+            };
+            let local_path = exe_dir.join("bin").join(local_bin_name);
+            if local_path.exists() {
+                found_path = Some(local_path.to_string_lossy().to_string());
+            }
+        }
+    }
     
     // 1. Scan pre-defined directory paths
     let paths_to_check = if is_windows {
@@ -133,14 +149,14 @@ pub async fn detect_agent_internal<R: tauri::Runtime>(
         &config.detect_paths.macos
     };
 
-    let mut found_path: Option<String> = None;
-
-    if let Some(ref paths) = paths_to_check {
-        for path_str in paths {
-            let path = resolve_env_path(path_str);
-            if path.exists() {
-                found_path = Some(path.to_string_lossy().to_string());
-                break;
+    if found_path.is_none() {
+        if let Some(ref paths) = paths_to_check {
+            for path_str in paths {
+                let path = resolve_env_path(path_str);
+                if path.exists() {
+                    found_path = Some(path.to_string_lossy().to_string());
+                    break;
+                }
             }
         }
     }
@@ -282,6 +298,57 @@ pub async fn get_update_command(agent_id: String, app: AppHandle) -> Result<Inst
 
 // --- Test Code ---
 
+#[tauri::command]
+pub fn check_skill_folder(cwd: String) -> bool {
+    if cwd.is_empty() {
+        return false;
+    }
+    let path = std::path::Path::new(&cwd).join("skill");
+    path.exists() && path.is_dir()
+}
+
+#[tauri::command]
+pub async fn build_skill(
+    cwd: String,
+    agent_id: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    build_skill_internal(cwd, agent_id, app).await
+}
+
+pub async fn build_skill_internal<R: tauri::Runtime>(
+    cwd: String,
+    agent_id: String,
+    app: tauri::AppHandle<R>,
+) -> Result<String, String> {
+    if cwd.is_empty() {
+        return Err("Current working directory is empty".to_string());
+    }
+
+    // 1. Detect agent binary path
+    let status = detect_agent_internal(agent_id.clone(), app.clone()).await?;
+    let binary_path = if status.installed {
+        status.path.ok_or_else(|| "Installed agent has no path".to_string())?
+    } else {
+        return Err(format!("Agent {} is not installed", agent_id));
+    };
+
+    // 2. Build skill using "agy build"
+    let mut cmd = std::process::Command::new(&binary_path);
+    cmd.arg("build");
+    cmd.current_dir(&cwd);
+
+    let output = cmd.output().map_err(|e| format!("Failed to execute build command: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Err(format!("Build failed.\nStdout: {}\nStderr: {}", stdout, stderr))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,6 +378,25 @@ mod tests {
         
         let s = status.unwrap();
         println!("Mock detect result for agy: installed = {}, path = {:?}", s.installed, s.path);
+    }
+
+    #[test]
+    fn test_skill_detection_mock() {
+        let temp_dir = std::env::temp_dir();
+        let skill_dir = temp_dir.join("skill");
+        
+        if skill_dir.exists() {
+            let _ = std::fs::remove_dir_all(&skill_dir);
+        }
+        
+        let path_str = temp_dir.to_string_lossy().to_string();
+        
+        assert_eq!(check_skill_folder(path_str.clone()), false);
+        
+        std::fs::create_dir(&skill_dir).unwrap();
+        assert_eq!(check_skill_folder(path_str.clone()), true);
+        
+        let _ = std::fs::remove_dir_all(&skill_dir);
     }
 
     #[tokio::test]

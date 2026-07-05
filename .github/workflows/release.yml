@@ -15,8 +15,10 @@ jobs:
         include:
           - platform: "macos-latest"
             args: "--target universal-apple-darwin"
+            zip_name: "agent-deck-mac.zip"
           - platform: "windows-latest"
             args: ""
+            zip_name: "agent-deck-win.zip"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -36,13 +38,26 @@ jobs:
         run: npm install
 
       - name: build tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: npm run tauri build -- ${{ matrix.args }}
+
+      - name: package macOS app to zip
+        if: matrix.platform == 'macos-latest'
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          zip -r ../../../../agent-deck-mac.zip agent-deck.app
+
+      - name: package Windows exe to zip
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path src-tauri/target/release/agent-deck.exe -DestinationPath agent-deck-win.zip
+
+      - name: upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.zip_name }}
+          draft: true
+          name: "agent-deck ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: "v__VERSION__"
-          releaseName: "Universal AI Desktop v__VERSION__"
-          releaseBody: "Release of Universal AI Desktop client."
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}

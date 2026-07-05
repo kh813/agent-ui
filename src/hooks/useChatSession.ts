@@ -67,6 +67,47 @@ export function useChatSession({
       ]);
 
       try {
+        // Task 9-5 & 9-6: Check and auto-rebuild skill folder if exists
+        const hasSkill = await invoke<boolean>("check_skill_folder", { cwd: targetCwd || "" });
+        if (hasSkill) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `sys-skill-build-${Date.now()}`,
+              sender: "system",
+              content: "🛠️ Skill folder detected. Rebuilding skill before starting session...",
+              timestamp: Date.now(),
+            },
+          ]);
+
+          try {
+            const buildResult = await invoke<string>("build_skill", {
+              cwd: targetCwd || "",
+              agentId: "agy",
+            });
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `sys-skill-ok-${Date.now()}`,
+                sender: "system",
+                content: `✓ Skill rebuild succeeded!\n${buildResult}`,
+                timestamp: Date.now(),
+              },
+            ]);
+          } catch (buildErr: any) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `sys-skill-fail-${Date.now()}`,
+                sender: "system",
+                content: `⚠️ Skill rebuild failed. Starting session anyway.\nError details:\n${buildErr.toString()}`,
+                timestamp: Date.now(),
+                status: "error",
+              },
+            ]);
+          }
+        }
+
         await invoke("start_pty", {
           command,
           args: defaultArgs,

@@ -25,7 +25,9 @@ pub fn run() {
             agent::detect_agent,
             agent::get_install_command,
             agent::check_agent_update,
-            agent::get_update_command
+            agent::get_update_command,
+            agent::check_skill_folder,
+            agent::build_skill
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

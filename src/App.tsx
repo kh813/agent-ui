@@ -225,7 +225,7 @@ function App() {
     <div className="app-container">
       {/* Header and Connection Panel */}
       <header className="app-header">
-        <h1 className="app-title">Antigravity Chat Console</h1>
+        <h1 className="app-title">agent-deck Chat Console</h1>
         
         {agyStatus.installed && (
           <div className="controls-group">
