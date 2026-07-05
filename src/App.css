@@ -1,4 +1,4 @@
-/* Modern Custom CSS for ChatUI */
+/* Modern Custom CSS for ChatUI - Light Theme (Friendly CUI wrap) */
 
 :root {
   font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
@@ -6,8 +6,8 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color: #e2e8f0;
-  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  color: #1e293b;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   background-attachment: fixed;
 
   font-synthesis: none;
@@ -44,20 +44,20 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  background: rgba(30, 41, 59, 0.7);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 12px;
   margin-bottom: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
 .app-title {
   margin: 0;
   font-size: 1.4rem;
   font-weight: 700;
-  background: linear-gradient(to right, #38bdf8, #818cf8);
+  background: linear-gradient(to right, #2563eb, #4f46e5);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -74,8 +74,8 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
   font-family: 'Fira Code', monospace;
   font-size: 0.85rem;
@@ -83,6 +83,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .cwd-label {
@@ -91,7 +92,7 @@ body {
 }
 
 .cwd-path {
-  color: #38bdf8;
+  color: #2563eb;
 }
 
 /* Buttons */
@@ -106,38 +107,38 @@ button {
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   outline: none;
 }
 
 button.primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #ffffff;
 }
 
 button.primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
 button.secondary {
-  background: rgba(51, 65, 85, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #475569;
 }
 
 button.secondary:hover {
-  background: rgba(71, 85, 105, 0.9);
+  background: rgba(241, 245, 249, 0.9);
 }
 
 button.danger {
-  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: #ffffff;
 }
 
 button.danger:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
 }
 
 button:disabled {
@@ -152,33 +153,33 @@ button:disabled {
   display: flex;
   flex: 1;
   gap: 16px;
-  min-height: 0; /* Important for flex child scrolling */
+  min-height: 0;
 }
 
 .chat-panel {
   display: flex;
   flex-direction: column;
   flex: 3;
-  background: rgba(30, 41, 59, 0.4);
+  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 16px;
   padding: 16px;
   min-width: 0;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03);
 }
 
 .terminal-panel {
   display: flex;
   flex-direction: column;
   flex: 2;
-  background: #121824;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 16px;
   padding: 12px;
   min-width: 0;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.02);
 }
 
 .terminal-header {
@@ -187,8 +188,8 @@ button:disabled {
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  color: #94a3b8;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  color: #64748b;
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -214,12 +215,12 @@ button:disabled {
 }
 
 .messages-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.08);
   border-radius: 3px;
 }
 
 .messages-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 /* Message Styles */
@@ -244,7 +245,7 @@ button:disabled {
   max-width: 75%;
   padding: 12px 16px;
   border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -254,22 +255,21 @@ button:disabled {
 }
 
 .message-row.user .message-bubble {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #ffffff;
   border-bottom-right-radius: 4px;
 }
 
 .message-row.assistant .message-bubble {
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: #1e293b;
   border-bottom-left-radius: 4px;
 }
 
 .message-row.system .message-bubble {
-  background: rgba(51, 65, 85, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  color: #94a3b8;
+  background: rgba(0, 0, 0, 0.04);
+  color: #64748b;
   font-size: 0.8rem;
   padding: 4px 12px;
   border-radius: 20px;
@@ -287,7 +287,7 @@ button:disabled {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #38bdf8;
+  background-color: #3b82f6;
   margin-left: 3px;
   animation: wave 1.2s infinite ease-in-out;
 }
@@ -304,18 +304,18 @@ button:disabled {
 .input-form {
   display: flex;
   gap: 12px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   padding: 8px 12px;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
 .input-field {
   flex: 1;
   background: transparent;
   border: none;
-  color: #f8fafc;
+  color: #1e293b;
   font-size: 1rem;
   padding: 8px 4px;
   outline: none;
@@ -323,11 +323,11 @@ button:disabled {
 }
 
 .input-field::placeholder {
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .input-field:disabled {
-  color: #475569;
+  color: #94a3b8;
   cursor: not-allowed;
 }
 
@@ -346,9 +346,9 @@ button:disabled {
 }
 
 .status-badge.idle {
-  background: rgba(100, 116, 139, 0.15);
-  color: #94a3b8;
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.15);
 }
 
 /* Markdown rendering styles */
@@ -367,18 +367,18 @@ button:disabled {
 
 .markdown-body code {
   font-family: 'Fira Code', Menlo, Monaco, Consolas, monospace;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.05);
   padding: 2px 4px;
   border-radius: 4px;
   font-size: 0.85em;
-  color: #f43f5e;
+  color: #dc2626;
 }
 
 .markdown-body pre {
   margin: 12px 0;
   padding: 12px;
-  background-color: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: #1e293b;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
   overflow-x: auto;
 }
@@ -387,7 +387,7 @@ button:disabled {
   background-color: transparent;
   padding: 0;
   border-radius: 0;
-  color: #38bdf8;
+  color: #f8fafc;
   font-size: 0.85rem;
 }
 
@@ -398,7 +398,7 @@ button:disabled {
   margin-top: 16px;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #ffffff;
+  color: #0f172a;
 }
 
 .markdown-body h1 { font-size: 1.3rem; }
@@ -419,8 +419,8 @@ button:disabled {
 .markdown-body blockquote {
   margin: 12px 0;
   padding-left: 12px;
-  border-left: 4px solid #818cf8;
-  color: #94a3b8;
+  border-left: 4px solid #3b82f6;
+  color: #475569;
 }
 
 /* Sidebar and Agent Selection styles */
@@ -436,10 +436,10 @@ button:disabled {
   display: flex;
   flex-direction: column;
   width: 250px;
-  background: rgba(15, 23, 42, 0.4);
+  background: rgba(255, 255, 255, 0.4);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 16px;
   padding: 16px;
   gap: 16px;
@@ -465,21 +465,21 @@ button:disabled {
   flex-direction: column;
   padding: 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
 }
 
 .agent-item:hover:not(.disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
 .agent-item.active {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.2);
 }
 
 .agent-item.disabled {
@@ -495,7 +495,7 @@ button:disabled {
 
 .agent-name {
   font-weight: 600;
-  color: #f1f5f9;
+  color: #1e293b;
   font-size: 0.95rem;
 }
 
@@ -530,10 +530,10 @@ button:disabled {
   flex: 1;
   padding: 40px;
   text-align: center;
-  background: rgba(30, 41, 59, 0.2);
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 16px;
 }
 
@@ -546,12 +546,12 @@ button:disabled {
   font-size: 1.6rem;
   font-weight: 700;
   margin-bottom: 12px;
-  color: #ffffff;
+  color: #1e293b;
 }
 
 .onboarding-desc {
   max-width: 500px;
-  color: #94a3b8;
+  color: #475569;
   margin-bottom: 24px;
   line-height: 1.6;
 }

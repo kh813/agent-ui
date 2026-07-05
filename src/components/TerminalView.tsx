@@ -18,8 +18,10 @@ export function TerminalView({ onData, terminalRef }: TerminalViewProps) {
     const term = new Terminal({
       cursorBlink: true,
       theme: {
-        background: "#1e1e1e",
-        foreground: "#ffffff",
+        background: "#f8fafc",
+        foreground: "#0f172a",
+        cursor: "#0f172a",
+        selectionBackground: "rgba(59, 130, 246, 0.3)",
       },
       fontSize: 13,
       fontFamily: "Menlo, Monaco, 'Courier New', monospace",
@@ -65,7 +67,7 @@ export function TerminalView({ onData, terminalRef }: TerminalViewProps) {
       style={{
         width: "100%",
         height: "100%",
-        backgroundColor: "#1e1e1e",
+        backgroundColor: "#f8fafc",
         padding: "5px",
         borderRadius: "5px",
         overflow: "hidden",
