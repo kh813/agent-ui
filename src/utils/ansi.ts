@@ -1,7 +1,8 @@
 /**
  * Regular expression to match ANSI escape codes.
+ * Standard terminators include all alphabetic characters, ~, @, =, >, <, etc.
  */
-const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[a-zA-Z~@>=><]/g;
 
 /**
  * Strips all ANSI escape codes from a given string.
@@ -16,6 +17,9 @@ export function stripAnsi(text: string): string {
  */
 export function cleanTerminalOutput(text: string): string {
   let cleaned = stripAnsi(text);
+  
+  // Remove non-printable raw control chars (excluding backspace \x08) and unicode replacement character (tofu/☒)
+  cleaned = cleaned.replace(/[\x00-\x07\x0B-\x0C\x0E-\x1F\x7F\uFFFD]/g, "");
   
   // Remove braille patterns (loading spinners)
   cleaned = cleaned.replace(/[\u2800-\u28FF]/g, "");
