@@ -34,6 +34,7 @@ function App() {
     startSession,
     stopSession,
     sendMessage,
+    respondToPrompt,
     changeCwd,
   } = useChatSession({
     command: shellPath,
@@ -41,6 +42,8 @@ function App() {
     initialCwd: "",
     onRawOutput: handleRawOutput,
   });
+
+  const hasActivePrompt = messages.some((msg) => msg.prompt !== undefined);
 
   // Auto-scroll chat to the bottom on new messages
   useEffect(() => {
@@ -149,6 +152,86 @@ function App() {
                             <span className="thinking-dot"></span>
                           </div>
                         )}
+                        {msg.prompt && (
+                          <div style={{
+                            marginTop: "12px",
+                            padding: "12px",
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            borderRadius: "8px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "8px"
+                          }}>
+                            <div style={{ fontSize: "0.85rem", color: "#94a3b8", fontWeight: "600" }}>
+                              {msg.prompt.message}
+                            </div>
+                            
+                            {msg.prompt.prompt_type === "confirm" && (
+                              <div style={{ display: "flex", gap: "8px" }}>
+                                <button 
+                                  className="primary" 
+                                  onClick={() => respondToPrompt(msg.id, "y")}
+                                  style={{ padding: "6px 16px" }}
+                                >
+                                  はい (Yes)
+                                </button>
+                                <button 
+                                  className="secondary" 
+                                  onClick={() => respondToPrompt(msg.id, "n")}
+                                  style={{ padding: "6px 16px" }}
+                                >
+                                  いいえ (No)
+                                </button>
+                              </div>
+                            )}
+                            
+                            {msg.prompt.prompt_type === "path" && (
+                              <div>
+                                <button 
+                                  className="primary" 
+                                  onClick={async () => {
+                                    const selected = await open({
+                                      directory: true,
+                                      multiple: false,
+                                      title: "Select Path for CLI Prompt",
+                                    });
+                                    if (selected && typeof selected === "string") {
+                                      respondToPrompt(msg.id, selected);
+                                    }
+                                  }}
+                                  style={{ padding: "6px 16px" }}
+                                >
+                                  フォルダを選択
+                                </button>
+                              </div>
+                            )}
+
+                            {msg.prompt.prompt_type === "login" && msg.prompt.url && (
+                              <div>
+                                <a 
+                                  href={msg.prompt.url} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    padding: "8px 16px",
+                                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                                    color: "#fff",
+                                    textDecoration: "none",
+                                    borderRadius: "8px",
+                                    fontWeight: "600",
+                                    fontSize: "0.9rem",
+                                    boxShadow: "0 2px 8px rgba(16, 185, 129, 0.4)"
+                                  }}
+                                >
+                                  ブラウザでログインを開く
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -166,11 +249,13 @@ function App() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
-                status === "running" 
-                  ? "Send terminal input..." 
-                  : "Start a session to interact"
+                status !== "running" 
+                  ? "Start a session to interact" 
+                  : hasActivePrompt
+                  ? "Please respond to the interactive prompt below..."
+                  : "Send terminal input..."
               }
-              disabled={status !== "running"}
+              disabled={status !== "running" || hasActivePrompt}
             />
             <button 
               type="submit" 

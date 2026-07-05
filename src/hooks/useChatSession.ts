@@ -3,19 +3,27 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { cleanTerminalOutput } from "../utils/ansi";
 
+export interface PtyPrompt {
+  prompt_type: "confirm" | "path" | "login";
+  message: string;
+  options?: string[];
+  url?: string;
+}
+
 export interface Message {
   id: string;
   sender: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
   status?: "thinking" | "completed" | "error";
+  prompt?: PtyPrompt;
 }
 
 export interface UseChatSessionOptions {
   command: string;
   defaultArgs?: string[];
   initialCwd?: string;
-  onRawOutput?: (raw: string) => void; // For xterm.js direct binding
+  onRawOutput?: (raw: string) => void;
 }
 
 export function useChatSession({
@@ -29,7 +37,6 @@ export function useChatSession({
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
 
-  // Use refs to access current state inside event listeners
   const statusRef = useRef(status);
   const messagesRef = useRef(messages);
   const cwdRef = useRef(cwd);
@@ -46,7 +53,7 @@ export function useChatSession({
     cwdRef.current = cwd;
   }, [cwd]);
 
-  // PTY Session Control: Start PTY
+  // Start PTY Session
   const startSession = useCallback(
     async (targetCwd: string = cwdRef.current) => {
       setStatus("idle");
@@ -123,7 +130,6 @@ export function useChatSession({
         status: "thinking",
       };
 
-      // Add user message and prepare an empty assistant bubble
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
       try {
@@ -142,6 +148,52 @@ export function useChatSession({
     []
   );
 
+  // Respond to an interactive PTY prompt (button clicks or path selection)
+  const respondToPrompt = useCallback(
+    async (messageId: string, responseText: string) => {
+      if (statusRef.current !== "running") return;
+
+      const userMsg: Message = {
+        id: `user-res-${Date.now()}`,
+        sender: "user",
+        content: responseText,
+        timestamp: Date.now(),
+      };
+
+      // Resolve the active prompt by removing it from the target message and starting a new thinking block
+      setMessages((prev) => {
+        const updatedMessages = prev.map((msg) => {
+          if (msg.id === messageId) {
+            // Remove prompt field to hide the UI buttons after selection
+            const { prompt, ...rest } = msg;
+            return {
+              ...rest,
+              status: "completed" as const,
+            };
+          }
+          return msg;
+        });
+
+        const nextAssistantMsg: Message = {
+          id: `assistant-${Date.now()}`,
+          sender: "assistant",
+          content: "",
+          timestamp: Date.now() + 1,
+          status: "thinking",
+        };
+
+        return [...updatedMessages, userMsg, nextAssistantMsg];
+      });
+
+      try {
+        await invoke("write_to_pty", { input: responseText + "\n" });
+      } catch (e: any) {
+        console.error("Failed to write response to PTY:", e);
+      }
+    },
+    []
+  );
+
   // Change working directory and restart PTY
   const changeCwd = useCallback(
     async (newCwd: string) => {
@@ -151,11 +203,13 @@ export function useChatSession({
     [startSession]
   );
 
-  // Listen to PTY outputs
+  // Listen to PTY outputs, status changes, and prompt detections
   useEffect(() => {
     let unlistenOutput: (() => void) | null = null;
     let unlistenStatus: (() => void) | null = null;
+    let unlistenPrompt: (() => void) | null = null;
 
+    // Output receiver
     listen<{ data: string }>("pty-output", (event) => {
       const raw = event.payload.data;
       if (onRawOutput) {
@@ -169,7 +223,6 @@ export function useChatSession({
         if (prev.length === 0) return prev;
         const lastMsg = prev[prev.length - 1];
 
-        // Append to the last assistant message if it is still "thinking"
         if (lastMsg.sender === "assistant" && lastMsg.status === "thinking") {
           return [
             ...prev.slice(0, -1),
@@ -179,7 +232,6 @@ export function useChatSession({
             },
           ];
         } else {
-          // If no assistant message is active, create a new one
           return [
             ...prev,
             {
@@ -196,10 +248,33 @@ export function useChatSession({
       unlistenOutput = fn;
     });
 
+    // PTY interactive prompt detection receiver
+    listen<PtyPrompt>("pty-prompt", (event) => {
+      setMessages((prev) => {
+        if (prev.length === 0) return prev;
+        const lastMsg = prev[prev.length - 1];
+        
+        // Attach prompt metadata to the active assistant message
+        if (lastMsg.sender === "assistant") {
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...lastMsg,
+              prompt: event.payload,
+              status: "completed", // Stop loading/thinking animation when prompt awaits action
+            },
+          ];
+        }
+        return prev;
+      });
+    }).then((fn) => {
+      unlistenPrompt = fn;
+    });
+
+    // PTY status receiver
     listen<string>("pty-status", (event) => {
       if (event.payload === "terminated") {
         setStatus("idle");
-        // Mark the active assistant message as completed
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const lastMsg = prev[prev.length - 1];
@@ -222,6 +297,7 @@ export function useChatSession({
     return () => {
       if (unlistenOutput) unlistenOutput();
       if (unlistenStatus) unlistenStatus();
+      if (unlistenPrompt) unlistenPrompt();
     };
   }, [onRawOutput]);
 
@@ -234,6 +310,7 @@ export function useChatSession({
     startSession,
     stopSession,
     sendMessage,
+    respondToPrompt,
     changeCwd,
     setMessages,
   };

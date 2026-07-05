@@ -1,10 +1,12 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use regex::Regex;
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
 
 pub struct PtyState {
@@ -28,7 +30,60 @@ struct PtyOutputPayload {
     data: String,
 }
 
-// --- 内部ロジック（テスト可能、ジェネリックなRuntimeに対応） ---
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct PtyPromptPayload {
+    pub prompt_type: String, // "confirm" | "path" | "login"
+    pub message: String,
+    pub options: Option<Vec<String>>,
+    pub url: Option<String>,
+}
+
+// Strip ANSI helper on backend to parse clean prompt patterns
+pub fn strip_ansi_rust(text: &str) -> String {
+    let re = Regex::new(r"[\x1b\x9b]\[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]").unwrap();
+    re.replace_all(text, "").to_string()
+}
+
+// Detect prompts (y/n, folder path, login oauth url) from text
+pub fn detect_prompts(text: &str) -> Option<PtyPromptPayload> {
+    // 1. Login/Authentication URL (Google OAuth or device login url)
+    let login_re = Regex::new(r"https://[a-zA-Z0-9./?=&_-]*(oauth|auth|device)[a-zA-Z0-9./?=&_-]*").unwrap();
+    if let Some(mat) = login_re.find(text) {
+        return Some(PtyPromptPayload {
+            prompt_type: "login".to_string(),
+            message: "Authentication login requested. The URL has been opened in your browser.".to_string(),
+            options: None,
+            url: Some(mat.as_str().to_string()),
+        });
+    }
+
+    // 2. Y/N Confirmation
+    // Proceed [y/N], Confirm [yes/no], procedd (y/n), Are you sure? [y/N]
+    let confirm_re = Regex::new(r"(?i)(confirm|proceed|are you sure|y/n|yes/no)[\s\S]*?\[([yY]/[nN]|[yY]es/[nN]o)\]").unwrap();
+    if confirm_re.is_match(text) {
+        return Some(PtyPromptPayload {
+            prompt_type: "confirm".to_string(),
+            message: "Interactive confirmation requested.".to_string(),
+            options: Some(vec!["Yes".to_string(), "No".to_string()]),
+            url: None,
+        });
+    }
+
+    // 3. Path Input prompt
+    let path_re = Regex::new(r"(?i)(enter|select|input)\s+[\s\S]*?(path|folder|directory|destination)").unwrap();
+    if path_re.is_match(text) {
+        return Some(PtyPromptPayload {
+            prompt_type: "path".to_string(),
+            message: "Folder path input requested.".to_string(),
+            options: None,
+            url: None,
+        });
+    }
+
+    None
+}
+
+// --- Internal Logic (Generic Runtime support for testing) ---
 
 pub async fn start_pty_internal<R: tauri::Runtime>(
     command: String,
@@ -37,12 +92,10 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: &PtyState,
 ) -> Result<(), String> {
-    // 既存のセッションがあれば停止する
     let _ = stop_pty_internal(state).await;
 
     let pty_system = native_pty_system();
     
-    // 標準的なターミナルサイズを設定
     let pair = pty_system
         .openpty(PtySize {
             rows: 24,
@@ -66,12 +119,10 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
     let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
-    // Stateに保持
     *state.session.lock().await = Some(pair.master);
     *state.writer.lock().await = Some(writer);
     *state.child.lock().await = Some(child);
 
-    // 非同期で出力を読み取り、Tauri Eventでフロントへストリーミング
     let app_clone = app.clone();
     thread::spawn(move || {
         let mut reader = reader;
@@ -79,13 +130,25 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => {
-                    // EOF: プロセス終了
                     let _ = app_clone.emit("pty-status", "terminated");
                     break;
                 }
                 Ok(n) => {
-                    let data = String::from_utf8_lossy(&buffer[..n]).into_owned();
-                    let _ = app_clone.emit("pty-output", PtyOutputPayload { data });
+                    let raw_data = String::from_utf8_lossy(&buffer[..n]).into_owned();
+                    let _ = app_clone.emit("pty-output", PtyOutputPayload { data: raw_data.clone() });
+                    
+                    // Clean text and check prompt pattern
+                    let clean_text = strip_ansi_rust(&raw_data);
+                    if let Some(prompt) = detect_prompts(&clean_text) {
+                        // If it's a login link, open default OS browser
+                        if prompt.prompt_type == "login" {
+                            if let Some(ref url) = prompt.url {
+                                let _ = app_clone.opener().open_path(url, None::<String>);
+                            }
+                        }
+                        
+                        let _ = app_clone.emit("pty-prompt", prompt);
+                    }
                 }
                 Err(_) => {
                     let _ = app_clone.emit("pty-status", "error");
@@ -99,17 +162,14 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
 }
 
 pub async fn stop_pty_internal(state: &PtyState) -> Result<(), String> {
-    // childをkill
     let mut child_guard = state.child.lock().await;
     if let Some(mut child) = child_guard.take() {
         let _ = child.kill();
     }
     
-    // writerをクリア
     let mut writer_guard = state.writer.lock().await;
     *writer_guard = None;
 
-    // sessionをクリア
     let mut session_guard = state.session.lock().await;
     *session_guard = None;
 
@@ -129,7 +189,7 @@ pub async fn write_to_pty_internal(input: String, state: &PtyState) -> Result<()
     }
 }
 
-// --- Tauriコマンド（薄いラッパー） ---
+// --- Tauri Command Wrapper ---
 
 #[tauri::command]
 pub async fn start_pty(
@@ -155,7 +215,7 @@ pub async fn stop_pty(state: State<'_, PtyState>) -> Result<(), String> {
     stop_pty_internal(&state).await
 }
 
-// --- テストコード ---
+// --- Test Code ---
 
 #[cfg(test)]
 mod tests {
@@ -199,6 +259,42 @@ mod tests {
         assert!(n > 0);
     }
 
+    #[test]
+    fn test_strip_ansi_rust() {
+        let text_with_colors = "\x1b[31mRed Text\x1b[0m and \x1b[1;34mBold Blue\x1b[0m";
+        let clean = strip_ansi_rust(text_with_colors);
+        assert_eq!(clean, "Red Text and Bold Blue");
+    }
+
+    #[test]
+    fn test_detect_login_url() {
+        let raw_output = "To sign in, please open the following URL in your browser:\nhttps://accounts.google.com/o/oauth2/device/auth?user_code=ABCD-EFGH\nWaiting for authentication...";
+        let prompt = detect_prompts(raw_output);
+        assert!(prompt.is_some());
+        let p = prompt.unwrap();
+        assert_eq!(p.prompt_type, "login");
+        assert_eq!(p.url.unwrap(), "https://accounts.google.com/o/oauth2/device/auth?user_code=ABCD-EFGH");
+    }
+
+    #[test]
+    fn test_detect_confirm_prompt() {
+        let raw_confirm = "Do you want to proceed? [y/N]: ";
+        let prompt = detect_prompts(raw_confirm);
+        assert!(prompt.is_some());
+        let p = prompt.unwrap();
+        assert_eq!(p.prompt_type, "confirm");
+        assert_eq!(p.options.unwrap(), vec!["Yes".to_string(), "No".to_string()]);
+    }
+
+    #[test]
+    fn test_detect_path_prompt() {
+        let raw_path = "Enter installation directory path: ";
+        let prompt = detect_prompts(raw_path);
+        assert!(prompt.is_some());
+        let p = prompt.unwrap();
+        assert_eq!(p.prompt_type, "path");
+    }
+
     #[tokio::test]
     async fn test_start_pty_and_emission() {
         use tauri::test::mock_app;
@@ -230,7 +326,6 @@ mod tests {
             }
         });
 
-        // 内部関数をモックのhandleで直接呼び出す
         let start_res = start_pty_internal(cmd, args, None, handle.clone(), &state).await;
         assert!(start_res.is_ok());
 
