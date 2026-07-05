@@ -68,10 +68,11 @@ export function cleanTerminalOutput(text: string): string {
     if (trimmed.includes("──") || trimmed.includes("───")) return false;
     if (/^[─\-_=\*]{3,}$/.test(trimmed)) return false;
     
-    // Remove terminal size / mouse query fragments (like 'W4;', '4; q', '4;', 'q', 'X')
+    // Remove terminal size / mouse query fragments and standalone bracket leaks (like 'W4;', '4; q', '4;', 'q', 'X', '[1', '[1;')
     if (/^[A-Za-z\d]*\d+;[A-Za-z\d]*;*[A-Za-z\d]*$/.test(trimmed)) return false;
     if (/^[a-zA-Z\d];\s*[a-zA-Z\d]$/.test(trimmed)) return false;
-    if (trimmed === "W4;" || trimmed === "4; q" || trimmed === "4;" || trimmed === "q" || trimmed === "X") return false;
+    if (/^\[\d+;*$/.test(trimmed)) return false;
+    if (trimmed === "W4;" || trimmed === "4; q" || trimmed === "4;" || trimmed === "q" || trimmed === "X" || trimmed === "[1" || trimmed === "[1;") return false;
     
     return true;
   });
