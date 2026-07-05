@@ -26,6 +26,14 @@ export function cleanTerminalOutput(text: string): string {
   cleaned = cleaned.replace(/\b\d+;\d+u/g, "");
   cleaned = cleaned.replace(/[a-zA-Z\d]+;\d+u/g, "");
   
+  // Remove other raw terminal garbage sequence leftovers globally (inline)
+  cleaned = cleaned.replace(/W4;/g, "");
+  cleaned = cleaned.replace(/4;\s*q/g, "");
+  cleaned = cleaned.replace(/4;/g, "");
+  cleaned = cleaned.replace(/\bq\b/g, "");
+  cleaned = cleaned.replace(/\bX\b/g, "");
+  cleaned = cleaned.replace(/\bW4\b/g, "");
+  
   // Normalize carriage returns and line feeds
   cleaned = cleaned.replace(/\r\n/g, "\n");
   cleaned = cleaned.replace(/\r/g, "\n");
@@ -41,12 +49,19 @@ export function cleanTerminalOutput(text: string): string {
     
     // Filter out models, workspace metadata and headers
     if (trimmed.includes("Gemini 3.5") || trimmed.includes("Gemini")) return false;
-    if (trimmed.includes("Google AI Pro")) return false;
+    if (trimmed.includes("Google AI Pro") || trimmed.includes("Google AI")) return false;
     if (trimmed.includes("Antigravity CLI") || trimmed.includes("Welcome to the Antigravity")) return false;
     if (trimmed.includes("Signing in") || trimmed.includes("Accessing workspace")) return false;
     if (trimmed.includes("Yes, I trust") || trimmed.includes("No, exit") || trimmed.includes("Navigate") || trimmed.includes("Confirm")) return false;
     
-    // Remove divider borders (like '──────────')
+    // Filter out emails
+    if (trimmed.includes("@") && (trimmed.includes(".com") || trimmed.includes(".org") || trimmed.includes(".net") || trimmed.includes(".edu"))) return false;
+    
+    // Filter out workspace directory paths
+    if (trimmed.includes("~/") || trimmed.includes("/Users/") || trimmed.includes("src-tauri") || trimmed.includes("chatui")) return false;
+    
+    // Remove divider borders (like '──────────') or lines containing mostly divider dashes
+    if (trimmed.includes("──") || trimmed.includes("───")) return false;
     if (/^[─\-_=\*]{3,}$/.test(trimmed)) return false;
     
     // Remove terminal size / mouse query fragments (like 'W4;', '4; q', '4;', 'q', 'X')
