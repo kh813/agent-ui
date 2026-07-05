@@ -137,6 +137,21 @@ export function cleanTerminalOutput(text: string): string {
       cleaned = cleaned.replace(/\x08/, "");
     }
   }
+  // Convert Unix command outputs (like file lists and total header) to markdown blockquotes
+  const finalLines = cleaned.split("\n").map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+    
+    const isCommandOutput = 
+      /^[bcdlsp-][rwx-]{9}/.test(trimmed) || 
+      /^total\s+\d+/.test(trimmed) ||
+      (trimmed.startsWith("/") && trimmed.split("/").length > 2 && !trimmed.includes(" ") && !trimmed.includes(".md"));
+      
+    if (isCommandOutput) {
+      return `> \`${line}\``; // Keep exact spacing inside backticks
+    }
+    return line;
+  });
   
-  return cleaned;
+  return finalLines.join("\n");
 }

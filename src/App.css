@@ -602,3 +602,25 @@ button:active {
 .agent-item:active {
   transform: scale(0.98);
 }
+
+/* Custom styling for Unix command blockquotes and code outputs */
+.markdown-body blockquote {
+  margin: 6px 0;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.03) !important;
+  border-left: 4px solid #3b82f6 !important;
+  border-radius: 6px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
+  font-size: 0.88rem !important;
+  color: #334155 !important;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.markdown-body blockquote code {
+  background: transparent !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  font-family: inherit !important;
+}
