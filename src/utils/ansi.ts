@@ -90,6 +90,15 @@ export function cleanTerminalOutput(text: string): string {
     if (/^\.+$/.test(trimmed)) return false;
     if (/^[a-zA-Z]{1,2}$/.test(trimmed)) return false;
     
+    // Filter out Box Drawing Characters (unicode罫線 like ─, ┌, └)
+    if (/[\u2500-\u257F]/.test(trimmed)) return false;
+    
+    // Filter out progress garbage fragments
+    const lowerFragment = trimmed.toLowerCase().replace(/\./g, "");
+    if (lowerFragment === "nning" || lowerFragment === "runni" || lowerFragment === "runn" || lowerFragment === "tota" || lowerFragment === "gener" || lowerFragment === "gene") {
+      return false;
+    }
+    
     // Filter out models, workspace metadata, headers and permission prompts
     if (trimmed.includes("Gemini 3.5") || trimmed.includes("Gemini")) return false;
     if (trimmed.includes("Google AI Pro") || trimmed.includes("Google AI")) return false;
