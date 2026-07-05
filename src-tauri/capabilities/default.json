@@ -6,8 +6,15 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "shell:default",
     "dialog:default",
-    "store:default"
+    "store:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "agy", "cmd": "agy" },
+        { "name": "bash", "cmd": "bash", "args": [ { "validator": ".*" } ] },
+        { "name": "powershell", "cmd": "powershell.exe", "args": [ { "validator": ".*" } ] }
+      ]
+    }
   ]
 }

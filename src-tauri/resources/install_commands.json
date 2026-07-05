@@ -1,0 +1,28 @@
+{
+  "agy": {
+    "name": "Antigravity CLI",
+    "binary": "agy",
+    "detect_paths": {
+      "macos": [
+        "/usr/local/bin/agy",
+        "/opt/homebrew/bin/agy",
+        "$HOME/.gemini/antigravity-cli/bin/agy"
+      ],
+      "windows": [
+        "$USERPROFILE\\.gemini\\antigravity-cli\\bin\\agy.exe",
+        "$USERPROFILE\\AppData\\Local\\antigravity-cli\\bin\\agy.exe"
+      ]
+    },
+    "version_args": ["--version"],
+    "install": {
+      "macos": {
+        "command": "bash",
+        "args": ["-c", "curl -fsSL https://antigravity.google.com/install.sh | bash"]
+      },
+      "windows": {
+        "command": "powershell.exe",
+        "args": ["-Command", "iex (iwr -useb https://antigravity.google.com/install.ps1)"]
+      }
+    }
+  }
+}

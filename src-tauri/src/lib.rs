@@ -1,4 +1,5 @@
 mod pty;
+mod agent;
 
 use pty::PtyState;
 
@@ -20,7 +21,9 @@ pub fn run() {
             greet,
             pty::start_pty,
             pty::write_to_pty,
-            pty::stop_pty
+            pty::stop_pty,
+            agent::detect_agent,
+            agent::get_install_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
