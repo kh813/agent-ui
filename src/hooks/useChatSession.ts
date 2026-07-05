@@ -323,13 +323,15 @@ export function useChatSession({
            // Filter out user's last sent query echo-back and any fragmented echoing of it (substrings)
           const lastSent = lastSentTextRef.current;
           if (lastSent) {
+            const normLast = lastSent.replace(/\s+/g, "").toLowerCase();
             const lines = cleanText.split("\n");
             const filteredLines = lines.filter((line) => {
               const trimmed = line.trim();
               if (!trimmed) return true;
               
-              // Only filter out echo fragments if the line is long enough (prevents breaking output details)
-              if (trimmed.length >= 3 && lastSent.includes(trimmed)) {
+              const normTrimmed = trimmed.replace(/\s+/g, "").toLowerCase();
+              // Filter out echo if the normalized line is a substring of normalized last query (or vice versa)
+              if (normTrimmed.length >= 2 && (normLast.includes(normTrimmed) || normTrimmed.includes(normLast))) {
                 return false;
               }
               return true;

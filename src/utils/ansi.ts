@@ -137,5 +137,9 @@ export function cleanTerminalOutput(text: string): string {
       cleaned = cleaned.replace(/\x08/, "");
     }
   }
+  // Prevent trailing newline insertion for streaming chunks
+  if (cleaned.endsWith("\n") && !raw.endsWith("\n") && !raw.endsWith("\r")) {
+    cleaned = cleaned.slice(0, -1);
+  }
   return cleaned;
 }
