@@ -1,0 +1,51 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#8E7CFF"/>
+      <stop offset="55%" stop-color="#C377E8"/>
+      <stop offset="100%" stop-color="#FF7CA3"/>
+    </linearGradient>
+
+    <radialGradient id="sheen" cx="26%" cy="20%" r="55%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="bubbleFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F7F3FB"/>
+    </linearGradient>
+
+    <linearGradient id="sparkle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFB25E"/>
+      <stop offset="100%" stop-color="#FF6F91"/>
+    </linearGradient>
+
+    <clipPath id="roundedSquare">
+      <rect x="0" y="0" width="1024" height="1024" rx="208" ry="208"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <g clip-path="url(#roundedSquare)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#sheen)"/>
+  </g>
+
+  <!-- Chat bubble tail -->
+  <path d="M 344 700 Q 312 774 266 818 Q 350 800 398 754 Z" fill="url(#bubbleFill)"/>
+
+  <!-- Chat bubble body -->
+  <rect x="212" y="256" width="600" height="470" rx="120" ry="120" fill="url(#bubbleFill)"/>
+
+  <!-- Sparkle (4-point star), centered in bubble -->
+  <path d="M 512 366
+           C 520 430, 546 456, 610 464
+           C 546 472, 520 498, 512 562
+           C 504 498, 478 472, 414 464
+           C 478 456, 504 430, 512 366 Z"
+        fill="url(#sparkle)"/>
+
+  <!-- small secondary sparkle for warmth/liveliness -->
+  <circle cx="632" cy="398" r="20" fill="url(#sparkle)"/>
+</svg>
