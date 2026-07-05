@@ -30,6 +30,7 @@ pub struct AgentConfig {
     pub detect_paths: DetectPaths,
     pub version_args: Vec<String>,
     pub install: InstallConfig,
+    pub update: InstallConfig,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -37,6 +38,13 @@ pub struct AgentStatus {
     pub installed: bool,
     pub path: Option<String>,
     pub version: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct UpdateStatus {
+    pub current_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
 }
 
 // Load configurations from resource file, resolving via resource_dir in Tauri v2
@@ -81,6 +89,30 @@ fn resolve_env_path(path_str: &str) -> PathBuf {
     }
     
     PathBuf::from(resolved)
+}
+
+// Best-effort fetch of latest version from web via OS-specific CLI tools
+fn fetch_latest_version_from_web() -> Option<String> {
+    let is_windows = cfg!(target_os = "windows");
+    let output = if is_windows {
+        Command::new("powershell")
+            .args(&["-Command", "try { (Invoke-WebRequest -UseBasicParsing https://antigravity.google.com/version.txt -TimeoutSec 3).Content.Trim() } catch { exit 1 }"])
+            .output()
+    } else {
+        Command::new("curl")
+            .args(&["-fsSL", "--max-time", "3", "https://antigravity.google.com/version.txt"])
+            .output()
+    };
+
+    if let Ok(out) = output {
+        if out.status.success() {
+            let ver = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !ver.is_empty() {
+                return Some(ver);
+            }
+        }
+    }
+    None
 }
 
 // --- Internal Logic (Generic Runtime support for testing) ---
@@ -178,6 +210,54 @@ pub async fn get_install_command_internal<R: tauri::Runtime>(
     cmd.ok_or_else(|| "Install command not defined for this OS".to_string())
 }
 
+pub async fn check_agent_update_internal<R: tauri::Runtime>(
+    agent_id: String,
+    app: tauri::AppHandle<R>,
+) -> Result<UpdateStatus, String> {
+    let status = detect_agent_internal(agent_id, app).await?;
+    if !status.installed {
+        return Ok(UpdateStatus {
+            current_version: None,
+            latest_version: None,
+            update_available: false,
+        });
+    }
+
+    let current = status.version;
+    let latest = fetch_latest_version_from_web().or_else(|| {
+        // Best-effort fallback: if query fails, default to current version (no update alert)
+        current.clone()
+    });
+
+    let update_available = match (&current, &latest) {
+        (Some(cur), Some(lat)) => cur.trim() != lat.trim(),
+        _ => false,
+    };
+
+    Ok(UpdateStatus {
+        current_version: current,
+        latest_version: latest,
+        update_available,
+    })
+}
+
+pub async fn get_update_command_internal<R: tauri::Runtime>(
+    agent_id: String,
+    app: tauri::AppHandle<R>,
+) -> Result<InstallCommand, String> {
+    let configs = load_config(&app)?;
+    let config = configs.get(&agent_id).ok_or_else(|| format!("Unknown agent: {}", agent_id))?;
+
+    let is_windows = cfg!(target_os = "windows");
+    let cmd = if is_windows {
+        config.update.windows.clone()
+    } else {
+        config.update.macos.clone()
+    };
+
+    cmd.ok_or_else(|| "Update command not defined for this OS".to_string())
+}
+
 // --- Tauri Command Wrapper ---
 
 #[tauri::command]
@@ -188,6 +268,16 @@ pub async fn detect_agent(agent_id: String, app: AppHandle) -> Result<AgentStatu
 #[tauri::command]
 pub async fn get_install_command(agent_id: String, app: AppHandle) -> Result<InstallCommand, String> {
     get_install_command_internal(agent_id, app).await
+}
+
+#[tauri::command]
+pub async fn check_agent_update(agent_id: String, app: AppHandle) -> Result<UpdateStatus, String> {
+    check_agent_update_internal(agent_id, app).await
+}
+
+#[tauri::command]
+pub async fn get_update_command(agent_id: String, app: AppHandle) -> Result<InstallCommand, String> {
+    get_update_command_internal(agent_id, app).await
 }
 
 // --- Test Code ---
@@ -221,5 +311,17 @@ mod tests {
         
         let s = status.unwrap();
         println!("Mock detect result for agy: installed = {}, path = {:?}", s.installed, s.path);
+    }
+
+    #[tokio::test]
+    async fn test_check_agent_update_mock() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+
+        let status = check_agent_update_internal("agy".to_string(), app.handle().clone()).await;
+        assert!(status.is_ok());
+        
+        let s = status.unwrap();
+        println!("Mock update result for agy: {:?}", s);
     }
 }

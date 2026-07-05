@@ -14,6 +14,12 @@ interface AgentStatus {
   version: string | null;
 }
 
+interface UpdateStatus {
+  current_version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+}
+
 function App() {
   const isWindows = window.navigator.userAgent.includes("Windows");
   const defaultShell = isWindows ? "powershell.exe" : "zsh";
@@ -29,7 +35,20 @@ function App() {
     path: null,
     version: null,
   });
+  
+  // Update States
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
+    current_version: null,
+    latest_version: null,
+    update_available: false,
+  });
+  const [autoCheckUpdate, setAutoCheckUpdate] = useState(() => {
+    const saved = localStorage.getItem("autoCheckUpdate");
+    return saved !== "false"; // Default to true
+  });
+  
   const [isInstalling, setIsInstalling] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -67,8 +86,6 @@ function App() {
       const res = await invoke<AgentStatus>("detect_agent", { agentId: "agy" });
       setAgyStatus(res);
       
-      // If installed, set the target shell path directly to the resolved agy binary!
-      // This is crucial: once detected, any new chat session will run "agy" directly
       if (res.installed && res.path) {
         setShellPath(res.path);
         setShellArgs(""); // Clear shell args for agy wrapping
@@ -78,20 +95,44 @@ function App() {
     }
   }, []);
 
+  // Check for updates
+  const checkUpdateStatus = useCallback(async () => {
+    try {
+      const res = await invoke<UpdateStatus>("check_agent_update", { agentId: "agy" });
+      setUpdateStatus(res);
+    } catch (e) {
+      console.error("Failed to check agent update:", e);
+    }
+  }, []);
+
   // Run initial check on startup
   useEffect(() => {
     checkAgentStatus();
   }, [checkAgentStatus]);
 
-  // Listen to PTY termination during installation
+  // Check updates if installed and enabled
+  useEffect(() => {
+    if (agyStatus.installed && autoCheckUpdate) {
+      checkUpdateStatus();
+    }
+  }, [agyStatus.installed, autoCheckUpdate, checkUpdateStatus]);
+
+  // Listen to PTY termination during installation and updates
   useEffect(() => {
     let unlistenStatus: (() => void) | null = null;
 
     listen<string>("pty-status", (event) => {
-      if (event.payload === "terminated" && isInstalling) {
-        setIsInstalling(false);
-        // Rescan status after installer process terminates
-        checkAgentStatus();
+      if (event.payload === "terminated") {
+        if (isInstalling) {
+          setIsInstalling(false);
+          checkAgentStatus();
+        }
+        if (isUpdating) {
+          setIsUpdating(false);
+          checkAgentStatus().then(() => {
+            checkUpdateStatus();
+          });
+        }
       }
     }).then((fn) => {
       unlistenStatus = fn;
@@ -100,7 +141,7 @@ function App() {
     return () => {
       if (unlistenStatus) unlistenStatus();
     };
-  }, [isInstalling, checkAgentStatus]);
+  }, [isInstalling, isUpdating, checkAgentStatus, checkUpdateStatus]);
 
   // Trigger installation via PTY
   const handleInstallAgy = async () => {
@@ -108,12 +149,10 @@ function App() {
       setIsInstalling(true);
       setIsTerminalOpen(true); // Open console automatically to show progress logs
       
-      // Get install command definition from JSON via rust backend
       const installCmd = await invoke<{ command: string; args: string[] }>("get_install_command", {
         agentId: "agy",
       });
 
-      // Run the installer command inside portable-pty
       await invoke("start_pty", {
         command: installCmd.command,
         args: installCmd.args,
@@ -123,6 +162,28 @@ function App() {
       setIsInstalling(false);
       console.error("Installation failed to launch:", e);
       alert(`Failed to launch installer: ${e.toString()}`);
+    }
+  };
+
+  // Trigger update via PTY
+  const handleUpdateAgy = async () => {
+    try {
+      setIsUpdating(true);
+      setIsTerminalOpen(true); // Open console automatically
+      
+      const updateCmd = await invoke<{ command: string; args: string[] }>("get_update_command", {
+        agentId: "agy",
+      });
+
+      await invoke("start_pty", {
+        command: updateCmd.command,
+        args: updateCmd.args,
+        cwd: null,
+      });
+    } catch (e: any) {
+      setIsUpdating(false);
+      console.error("Update failed to launch:", e);
+      alert(`Failed to launch updater: ${e.toString()}`);
     }
   };
 
@@ -168,7 +229,6 @@ function App() {
         
         {agyStatus.installed && (
           <div className="controls-group">
-            {/* Working directory control */}
             <div className="cwd-display" title={cwd || "Default working directory"}>
               <span className="cwd-label">CWD:</span>
               <span className="cwd-path">{cwd || "User Home (Default)"}</span>
@@ -182,7 +242,6 @@ function App() {
               Change Dir
             </button>
 
-            {/* Status indicators and Action buttons */}
             <div className={`status-badge ${status}`}>
               {status}
             </div>
@@ -197,7 +256,6 @@ function App() {
               </button>
             )}
 
-            {/* Toggle terminal panel */}
             <button 
               className="secondary" 
               onClick={() => setIsTerminalOpen(!isTerminalOpen)}
@@ -208,6 +266,45 @@ function App() {
         )}
       </header>
 
+      {/* Update Alert Notification Banner */}
+      {updateStatus.update_available && agyStatus.installed && (
+        <div style={{
+          background: "rgba(245, 158, 11, 0.15)",
+          borderBottom: "1px solid rgba(245, 158, 11, 0.25)",
+          padding: "10px 20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: "0.85rem",
+          color: "#f59e0b",
+          backdropFilter: "blur(8px)"
+        }}>
+          <div>
+            ⚠️ <strong>Antigravity CLI</strong> の新バージョン <strong>{updateStatus.latest_version}</strong> が利用可能です。(現在のバージョン: {updateStatus.current_version})
+            <span style={{ fontSize: "0.75rem", color: "#94a3b8", marginLeft: "12px" }}>
+              ※本エージェントは自己更新に対応しています。二重更新の防止のため、他で実行中の場合は終了をお待ちください。
+            </span>
+          </div>
+          <button 
+            className="primary" 
+            onClick={handleUpdateAgy}
+            disabled={isUpdating}
+            style={{
+              background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+              border: "none",
+              color: "#fff",
+              padding: "6px 14px",
+              borderRadius: "6px",
+              fontWeight: "600",
+              cursor: "pointer",
+              fontSize: "0.8rem"
+            }}
+          >
+            {isUpdating ? "更新中 (ログ確認)..." : "今すぐ更新"}
+          </button>
+        </div>
+      )}
+
       {/* Main Body Layout with Sidebar and Panel */}
       <div className="app-body-layout">
         {/* Sidebar panel */}
@@ -215,7 +312,6 @@ function App() {
           <div className="sidebar-title">AI Engines</div>
           
           <div className="agent-list">
-            {/* Antigravity engine (agy) */}
             <div 
               className={`agent-item ${selectedAgentId === "agy" ? "active" : ""}`}
               onClick={() => setSelectedAgentId("agy")}
@@ -231,7 +327,6 @@ function App() {
               </div>
             </div>
 
-            {/* Future engine: Claude Code (greyed out / placeholder) */}
             <div className="agent-item disabled" title="Claude Code (Future Roadmap)">
               <div className="agent-name-row">
                 <span className="agent-name">Claude Code</span>
@@ -241,6 +336,22 @@ function App() {
               </div>
               <div className="agent-version">Not supported</div>
             </div>
+          </div>
+
+          {/* Settings Section inside Sidebar */}
+          <div style={{ marginTop: "auto", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "16px" }}>
+            <div className="sidebar-title" style={{ marginBottom: "8px" }}>App Settings</div>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.8rem", color: "#94a3b8", cursor: "pointer" }}>
+              <input 
+                type="checkbox" 
+                checked={autoCheckUpdate} 
+                onChange={(e) => {
+                  setAutoCheckUpdate(e.target.checked);
+                  localStorage.setItem("autoCheckUpdate", e.target.checked.toString());
+                }} 
+              />
+              起動時に更新を確認する
+            </label>
           </div>
         </aside>
 
@@ -278,7 +389,6 @@ function App() {
                   <TerminalView 
                     terminalRef={terminalRef}
                     onData={(data) => {
-                      // Allow input only if process is active
                       invoke("write_to_pty", { input: data });
                     }}
                   />
@@ -429,20 +539,20 @@ function App() {
               </form>
             </div>
 
-            {/* Debug Terminal Panel (xterm.js) */}
+            {/* Debug/Installation/Update Terminal Panel (xterm.js) */}
             {isTerminalOpen && (
-              <div className="terminal-panel">
+              <div className="terminal-panel" style={{ flex: isUpdating ? 1 : undefined }}>
                 <div className="terminal-header">
-                  <span>LIVE INTERACTIVE SHELL LOG (DEBUG)</span>
-                  <span style={{ color: "#4caf50" }}>ONLINE</span>
+                  <span>{isUpdating ? "UPDATE LOGS (PTY STREAM)" : "LIVE INTERACTIVE SHELL LOG (DEBUG)"}</span>
+                  <span style={{ color: isUpdating ? "#ef4444" : "#4caf50" }}>
+                    {isUpdating ? "RUNNING" : "ONLINE"}
+                  </span>
                 </div>
                 <div style={{ flex: 1, minHeight: 0 }}>
                   <TerminalView 
                     terminalRef={terminalRef}
                     onData={(data) => {
-                      if (status === "running") {
-                        invoke("write_to_pty", { input: data });
-                      }
+                      invoke("write_to_pty", { input: data });
                     }}
                   />
                 </div>

@@ -23,7 +23,9 @@ pub fn run() {
             pty::write_to_pty,
             pty::stop_pty,
             agent::detect_agent,
-            agent::get_install_command
+            agent::get_install_command,
+            agent::check_agent_update,
+            agent::get_update_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

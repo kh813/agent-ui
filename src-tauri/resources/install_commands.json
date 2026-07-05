@@ -23,6 +23,16 @@
         "command": "powershell.exe",
         "args": ["-Command", "iex (iwr -useb https://antigravity.google.com/install.ps1)"]
       }
+    },
+    "update": {
+      "macos": {
+        "command": "agy",
+        "args": ["self-update"]
+      },
+      "windows": {
+        "command": "agy.exe",
+        "args": ["self-update"]
+      }
     }
   }
 }
