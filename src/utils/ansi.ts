@@ -57,10 +57,14 @@ export function cleanTerminalOutput(text: string): string {
     if (lowerTrimmed.length > 0 && lowerTrimmed.length <= targetGenerating.length && targetGenerating.startsWith(lowerTrimmed)) {
       return false;
     }
-    if (trimmed.includes("●") || trimmed.includes("ListPermissions") || trimmed.includes("ListDir")) return false;
+    if (trimmed.includes("●") || trimmed.includes("ListPermissions") || trimmed.includes("ListDir") || trimmed.includes("workspace(s)")) return false;
     if (trimmed.includes("Tip:") || trimmed.includes("Use /skills to browse") || trimmed.includes("└")) return false;
-    if (trimmed.includes("ctrl+o to expand") || trimmed.includes("ctrl+")) return false;
+    if (trimmed.includes("ctrl+o to expand") || trimmed.includes("ctrl+") || trimmed.includes("expand)") || trimmed.includes("expand")) return false;
     if (trimmed.includes("Flash (Medium)") || trimmed.includes("Medium)")) return false;
+    
+    // Filter out short garbage dot rows or 1-2 char alphabetic leftovers
+    if (/^\.+$/.test(trimmed)) return false;
+    if (/^[a-zA-Z]{1,2}$/.test(trimmed)) return false;
     
     // Filter out models, workspace metadata and headers
     if (trimmed.includes("Gemini 3.5") || trimmed.includes("Gemini")) return false;

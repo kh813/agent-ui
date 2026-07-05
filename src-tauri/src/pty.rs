@@ -108,8 +108,8 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
     
     let pair = pty_system
         .openpty(PtySize {
-            rows: 24,
-            cols: 80,
+            rows: 40,
+            cols: 300,
             pixel_width: 0,
             pixel_height: 0,
         })
