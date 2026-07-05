@@ -117,6 +117,8 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
 
     let mut cmd = CommandBuilder::new(&command);
     cmd.args(args);
+    cmd.env("LANG", "en_US.UTF-8");
+    cmd.env("LC_ALL", "en_US.UTF-8");
     
     if let Some(cwd_path) = cwd {
         if !cwd_path.is_empty() {
