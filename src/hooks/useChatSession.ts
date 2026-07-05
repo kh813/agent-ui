@@ -19,31 +19,7 @@ export interface Message {
   prompt?: PtyPrompt;
 }
 
-/**
- * Detects and removes the longest overlapping suffix of 'existing' and prefix of 'incoming'
- * to prevent duplicate text streams caused by PTY screen redraws.
- */
-function removeOverlay(existing: string, incoming: string): string {
-  if (!existing || !incoming) return incoming;
-  
-  // Fast path: if the incoming chunk is already completely contained within existing message, skip it
-  if (existing.includes(incoming)) {
-    return "";
-  }
-  
-  const minThreshold = 6; // Avoid stripping short partial matches (false positives)
-  const maxSearch = Math.min(existing.length, incoming.length);
-  
-  for (let len = maxSearch; len >= minThreshold; len--) {
-    const suffix = existing.slice(-len);
-    const prefix = incoming.slice(0, len);
-    if (suffix === prefix) {
-      return incoming.slice(len);
-    }
-  }
-  
-  return incoming;
-}
+
 
 export interface UseChatSessionOptions {
   command: string;
