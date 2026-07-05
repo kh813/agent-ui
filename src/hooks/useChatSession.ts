@@ -176,7 +176,7 @@ export function useChatSession({
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
       try {
-        await invoke("write_to_pty", { input: text + "\n" });
+        await invoke("write_to_pty", { input: text + "\r" });
       } catch (e: any) {
         setMessages((prev) => [
           ...prev.slice(0, -1),
@@ -293,13 +293,24 @@ export function useChatSession({
           // Check if agy has returned to interactive prompt input mode (? for shortcuts)
           const hasAgyPrompt = rawToClean.includes("? for shortcuts") || rawToClean.includes("shortcuts") || cleanText.includes("shortcuts");
 
-          // Filter out user's last sent query echo-back from the chat bubble
+          // Filter out user's last sent query echo-back and any fragmented echoing of it (substrings)
           const lastSent = lastSentTextRef.current;
-          if (lastSent && cleanText.includes(lastSent)) {
-            cleanText = cleanText.replace(lastSent, "");
+          if (lastSent) {
+            const lines = cleanText.split("\n");
+            const filteredLines = lines.filter((line) => {
+              const trimmed = line.trim();
+              if (!trimmed) return true;
+              
+              // If the entire trimmed line is a substring of the last query, it is an echo fragment
+              if (lastSent.includes(trimmed)) {
+                return false;
+              }
+              return true;
+            });
+            cleanText = filteredLines.join("\n");
           }
 
-          // Also clean duplicate echoing of prompt/input sequences (e.g. '現現現現...')
+          // Also clean duplicate echoing of first character prefix if any
           if (lastSent) {
             const firstChar = lastSent.charAt(0);
             if (firstChar && firstChar.trim()) {
