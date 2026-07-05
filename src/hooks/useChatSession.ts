@@ -67,6 +67,7 @@ export function useChatSession({
   const messagesRef = useRef(messages);
   const cwdRef = useRef(cwd);
   const lastSentTextRef = useRef<string>("");
+  const sessionOutputRef = useRef<string>("");
 
   useEffect(() => {
     statusRef.current = status;
@@ -183,6 +184,7 @@ export function useChatSession({
     async (text: string) => {
       if (statusRef.current !== "running") return;
       lastSentTextRef.current = text;
+      sessionOutputRef.current = "";
 
       const userMsg: Message = {
         id: `user-${Date.now()}`,
@@ -229,6 +231,8 @@ export function useChatSession({
         content: responseText,
         timestamp: Date.now(),
       };
+
+      sessionOutputRef.current = "";
 
       // Resolve the active prompt by removing it from the target message and starting a new thinking block
       setMessages((prev) => {
@@ -320,12 +324,15 @@ export function useChatSession({
             rawToClean = rawToClean.slice(0, -incompletePart.length); // Process only complete portion
           }
 
-          let cleanText = cleanTerminalOutput(rawToClean);
+          // Append complete chunks to our turn cumulative buffer
+          sessionOutputRef.current += rawToClean;
+
+          let cleanText = cleanTerminalOutput(sessionOutputRef.current);
           
           // Check if agy has returned to interactive prompt input mode (? for shortcuts)
-          const hasAgyPrompt = rawToClean.includes("? for shortcuts") || rawToClean.includes("shortcuts") || cleanText.includes("shortcuts");
+          const hasAgyPrompt = sessionOutputRef.current.includes("? for shortcuts") || sessionOutputRef.current.includes("shortcuts") || cleanText.includes("shortcuts");
 
-           // Filter out user's last sent query echo-back and any fragmented echoing of it (substrings)
+          // Filter out user's last sent query echo-back and any fragmented echoing of it (substrings)
           const lastSent = lastSentTextRef.current;
           if (lastSent) {
             const normLast = lastSent.replace(/\s+/g, "").toLowerCase();
@@ -336,7 +343,6 @@ export function useChatSession({
               
               const normTrimmed = trimmed.replace(/\s+/g, "").toLowerCase();
               // Filter out echo if the normalized line is a substring of normalized last query (or vice versa)
-              // We use a safe threshold (>= 5 chars) to prevent stripping actual output details (like file list items)
               if (normTrimmed.length >= 5 && (normLast.includes(normTrimmed) || normTrimmed.includes(normLast))) {
                 return false;
               }
@@ -354,15 +360,11 @@ export function useChatSession({
             const nextStatus = hasAgyPrompt ? ("completed" as const) : lastMsg.status;
 
             if (lastMsg.sender === "assistant") {
-              const dedupedIncoming = removeOverlay(lastMsg.content, cleanText);
-              if (!dedupedIncoming.trim() && nextStatus === lastMsg.status) {
-                return prev;
-              }
               return [
                 ...prev.slice(0, -1),
                 {
                   ...lastMsg,
-                  content: lastMsg.content + dedupedIncoming,
+                  content: cleanText, // REPLACE with turn cumulative clean text
                   status: nextStatus,
                 },
               ];
