@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "agent-deck",
-        "width": 1400,
-        "height": 850
+        "width": 960,
+        "height": 800
       }
     ],
     "security": {

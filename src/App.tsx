@@ -88,7 +88,7 @@ function App() {
       
       if (res.installed && res.path) {
         setShellPath(res.path);
-        setShellArgs("-i"); // Start agy in interactive mode
+        setShellArgs(""); // Reset args, start agy without arguments
       }
     } catch (e) {
       console.error("Failed to detect agy status:", e);
