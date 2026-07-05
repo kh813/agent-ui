@@ -389,21 +389,42 @@ export function useChatSession({
     // PTY interactive prompt detection receiver
     listen<PtyPrompt>("pty-prompt", (event) => {
       setMessages((prev) => {
-        if (prev.length === 0) return prev;
-        const lastMsg = prev[prev.length - 1];
+        if (prev.length === 0) {
+          return [
+            {
+              id: `assistant-prompt-${Date.now()}`,
+              sender: "assistant",
+              content: "",
+              timestamp: Date.now(),
+              status: "completed",
+              prompt: event.payload,
+            },
+          ];
+        }
         
-        // Attach prompt metadata to the active assistant message
+        const lastMsg = prev[prev.length - 1];
         if (lastMsg.sender === "assistant") {
           return [
             ...prev.slice(0, -1),
             {
               ...lastMsg,
               prompt: event.payload,
-              status: "completed", // Stop loading/thinking animation when prompt awaits action
+              status: "completed",
+            },
+          ];
+        } else {
+          return [
+            ...prev,
+            {
+              id: `assistant-prompt-${Date.now()}`,
+              sender: "assistant",
+              content: "",
+              timestamp: Date.now(),
+              status: "completed",
+              prompt: event.payload,
             },
           ];
         }
-        return prev;
       });
     }).then((fn) => {
       unlistenPrompt = fn;
