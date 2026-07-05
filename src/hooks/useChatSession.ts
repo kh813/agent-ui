@@ -270,35 +270,36 @@ export function useChatSession({
         onRawOutput(raw);
       }
 
-      let cleanText = cleanTerminalOutput(raw);
-      
-      // Check if agy has returned to interactive prompt input mode (? for shortcuts)
-      const hasAgyPrompt = raw.includes("? for shortcuts") || raw.includes("shortcuts") || cleanText.includes("shortcuts");
-
-      // Filter out user's last sent query echo-back from the chat bubble
-      const lastSent = lastSentTextRef.current;
-      if (lastSent && cleanText.includes(lastSent)) {
-        cleanText = cleanText.replace(lastSent, "");
-      }
-
-      // Also clean duplicate echoing of prompt/input sequences (e.g. '現現現現...')
-      if (lastSent) {
-        const firstChar = lastSent.charAt(0);
-        if (firstChar && firstChar.trim()) {
-          const repRegex = new RegExp(`${firstChar}{2,}`, "g");
-          cleanText = cleanText.replace(repRegex, "");
-        }
-      }
-
-      if (!cleanText.trim() && !hasAgyPrompt) return;
-
-      outputBuffer += cleanText;
+      // Accumulate raw terminal output to prevent ANSI code fragmentation across chunks
+      outputBuffer += raw;
 
       if (!flushTimer) {
         flushTimer = setTimeout(() => {
-          const textToAppend = outputBuffer;
+          const rawToClean = outputBuffer;
           outputBuffer = "";
           flushTimer = null;
+
+          let cleanText = cleanTerminalOutput(rawToClean);
+          
+          // Check if agy has returned to interactive prompt input mode (? for shortcuts)
+          const hasAgyPrompt = rawToClean.includes("? for shortcuts") || rawToClean.includes("shortcuts") || cleanText.includes("shortcuts");
+
+          // Filter out user's last sent query echo-back from the chat bubble
+          const lastSent = lastSentTextRef.current;
+          if (lastSent && cleanText.includes(lastSent)) {
+            cleanText = cleanText.replace(lastSent, "");
+          }
+
+          // Also clean duplicate echoing of prompt/input sequences (e.g. '現現現現...')
+          if (lastSent) {
+            const firstChar = lastSent.charAt(0);
+            if (firstChar && firstChar.trim()) {
+              const repRegex = new RegExp(`${firstChar}{2,}`, "g");
+              cleanText = cleanText.replace(repRegex, "");
+            }
+          }
+
+          if (!cleanText.trim() && !hasAgyPrompt) return;
 
           setMessages((prev) => {
             if (prev.length === 0) return prev;
@@ -311,7 +312,7 @@ export function useChatSession({
                 ...prev.slice(0, -1),
                 {
                   ...lastMsg,
-                  content: lastMsg.content + textToAppend,
+                  content: lastMsg.content + cleanText,
                   status: nextStatus,
                 },
               ];
@@ -321,7 +322,7 @@ export function useChatSession({
                 {
                   id: `assistant-stream-${Date.now()}`,
                   sender: "assistant",
-                  content: textToAppend,
+                  content: cleanText,
                   timestamp: Date.now(),
                   status: hasAgyPrompt ? ("completed" as const) : ("thinking" as const),
                 },
