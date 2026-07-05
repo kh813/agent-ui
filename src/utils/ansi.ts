@@ -2,7 +2,7 @@
  * Regular expression to match ANSI escape codes.
  * Standard terminators include all alphabetic characters, ~, @, =, >, <, etc.
  */
-const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[a-zA-Z~@>=><]/g;
+const ANSI_REGEX = /[\u001b\u009b][[()#;?]*[0-9;?$]*[a-zA-Z~@>=><]/g;
 
 /**
  * Strips all ANSI escape codes from a given string.
@@ -20,6 +20,9 @@ export function cleanTerminalOutput(text: string): string {
   
   // Remove non-printable raw control chars (excluding backspace \x08) and unicode replacement character (tofu/☒)
   cleaned = cleaned.replace(/[\x00-\x07\x0B-\x0C\x0E-\x1F\x7F\uFFFD]/g, "");
+  
+  // Remove unicode block elements (ASCII art progress bars/blocks like ▄▀▀▄)
+  cleaned = cleaned.replace(/[\u2580-\u259F]/g, "");
   
   // Remove braille patterns (loading spinners)
   cleaned = cleaned.replace(/[\u2800-\u28FF]/g, "");
@@ -73,11 +76,15 @@ export function cleanTerminalOutput(text: string): string {
     if (lowerTrimmed.length > 0 && lowerTrimmed.length <= targetRunning.length && targetRunning.startsWith(lowerTrimmed)) {
       return false;
     }
-    if (trimmed.includes("esc to cancel Running")) return false;
+    if (trimmed.includes("esc to cancel") || trimmed.includes("cancel Running") || trimmed.includes("cancel") || trimmed.includes("esc to")) return false;
     if (trimmed.includes("●") || trimmed.includes("ListPermissions") || trimmed.includes("ListDir") || trimmed.includes("workspace(s)")) return false;
     if (trimmed.includes("Tip:") || trimmed.includes("Use /skills to browse") || trimmed.includes("└")) return false;
     if (trimmed.includes("ctrl+o to expand") || trimmed.includes("ctrl+") || trimmed.includes("expand)") || trimmed.includes("expand")) return false;
     if (trimmed.includes("Flash (Medium)") || trimmed.includes("Medium)")) return false;
+    
+    // Filter out Chain of Thought (CoT / Thought processes)
+    if (trimmed.includes("Thought for") || trimmed.includes("Thought") || trimmed.includes("▸") || trimmed.includes("tokens")) return false;
+    if (trimmed.includes("Determining Current") || trimmed.includes("Analyzing Permissions")) return false;
     
     // Filter out short garbage dot rows or 1-2 char alphabetic leftovers
     if (/^\.+$/.test(trimmed)) return false;
