@@ -209,7 +209,10 @@ export function useChatSession({
     let unlistenStatus: (() => void) | null = null;
     let unlistenPrompt: (() => void) | null = null;
 
-    // Output receiver
+    let outputBuffer = "";
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Output receiver with 30ms throttling buffer optimization
     listen<{ data: string }>("pty-output", (event) => {
       const raw = event.payload.data;
       if (onRawOutput) {
@@ -219,31 +222,43 @@ export function useChatSession({
       const cleanText = cleanTerminalOutput(raw);
       if (!cleanText) return;
 
-      setMessages((prev) => {
-        if (prev.length === 0) return prev;
-        const lastMsg = prev[prev.length - 1];
+      outputBuffer += cleanText;
 
-        if (lastMsg.sender === "assistant" && lastMsg.status === "thinking") {
-          return [
-            ...prev.slice(0, -1),
-            {
-              ...lastMsg,
-              content: lastMsg.content + cleanText,
-            },
-          ];
-        } else {
-          return [
-            ...prev,
-            {
-              id: `assistant-stream-${Date.now()}`,
-              sender: "assistant",
-              content: cleanText,
-              timestamp: Date.now(),
-              status: "thinking",
-            },
-          ];
-        }
-      });
+      if (!flushTimer) {
+        flushTimer = setTimeout(() => {
+          const textToAppend = outputBuffer;
+          outputBuffer = "";
+          flushTimer = null;
+
+          if (!textToAppend) return;
+
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const lastMsg = prev[prev.length - 1];
+
+            if (lastMsg.sender === "assistant" && lastMsg.status === "thinking") {
+              return [
+                ...prev.slice(0, -1),
+                {
+                  ...lastMsg,
+                  content: lastMsg.content + textToAppend,
+                },
+              ];
+            } else {
+              return [
+                ...prev,
+                {
+                  id: `assistant-stream-${Date.now()}`,
+                  sender: "assistant",
+                  content: textToAppend,
+                  timestamp: Date.now(),
+                  status: "thinking",
+                },
+              ];
+            }
+          });
+        }, 30);
+      }
     }).then((fn) => {
       unlistenOutput = fn;
     });
@@ -298,6 +313,7 @@ export function useChatSession({
       if (unlistenOutput) unlistenOutput();
       if (unlistenStatus) unlistenStatus();
       if (unlistenPrompt) unlistenPrompt();
+      if (flushTimer) clearTimeout(flushTimer);
     };
   }, [onRawOutput]);
 

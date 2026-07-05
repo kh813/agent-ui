@@ -268,7 +268,7 @@ function App() {
 
       {/* Update Alert Notification Banner */}
       {updateStatus.update_available && agyStatus.installed && (
-        <div style={{
+        <div className="update-banner" style={{
           background: "rgba(245, 158, 11, 0.15)",
           borderBottom: "1px solid rgba(245, 158, 11, 0.25)",
           padding: "10px 20px",
