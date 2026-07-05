@@ -26,8 +26,13 @@ export interface Message {
 function removeOverlay(existing: string, incoming: string): string {
   if (!existing || !incoming) return incoming;
   
-  const minThreshold = 6; // Avoid stripping short partial matches (false positives on spaces, punctuation, etc.)
-  const maxSearch = Math.min(existing.length, incoming.length, 500);
+  // Fast path: if the incoming chunk is already completely contained within existing message, skip it
+  if (existing.includes(incoming)) {
+    return "";
+  }
+  
+  const minThreshold = 6; // Avoid stripping short partial matches (false positives)
+  const maxSearch = Math.min(existing.length, incoming.length);
   
   for (let len = maxSearch; len >= minThreshold; len--) {
     const suffix = existing.slice(-len);
