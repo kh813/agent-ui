@@ -275,9 +275,18 @@ export function useChatSession({
 
       if (!flushTimer) {
         flushTimer = setTimeout(() => {
-          const rawToClean = outputBuffer;
+          let rawToClean = outputBuffer;
           outputBuffer = "";
           flushTimer = null;
+
+          // Detect incomplete ANSI escape sequences at the end of the buffered raw text (carry-over)
+          const incompleteAnsiRegex = /\x1b[[()#;?]*[0-9;]*$/;
+          const match = rawToClean.match(incompleteAnsiRegex);
+          if (match) {
+            const incompletePart = match[0];
+            outputBuffer = incompletePart; // Save to next chunk buffer
+            rawToClean = rawToClean.slice(0, -incompletePart.length); // Process only complete portion
+          }
 
           let cleanText = cleanTerminalOutput(rawToClean);
           
