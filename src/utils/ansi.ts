@@ -2,7 +2,7 @@
  * Regular expression to match ANSI escape codes.
  * Standard terminators include all alphabetic characters, ~, @, =, >, <, etc.
  */
-const ANSI_REGEX = /[\u001b\u009b][[()#;?]*[0-9;?$]*[a-zA-Z~@>=><]/g;
+const ANSI_REGEX = /\u001b[[()#;?]*[0-9;?$]*[a-zA-Z~@>=><]/g;
 
 /**
  * Strips all ANSI escape codes from a given string.
@@ -137,21 +137,5 @@ export function cleanTerminalOutput(text: string): string {
       cleaned = cleaned.replace(/\x08/, "");
     }
   }
-  // Convert Unix command outputs (like file lists and total header) to markdown blockquotes
-  const finalLines = cleaned.split("\n").map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return line;
-    
-    const isCommandOutput = 
-      /^[bcdlsp-][rwx-]{9}/.test(trimmed) || 
-      /^total\s+\d+/.test(trimmed) ||
-      (trimmed.startsWith("/") && trimmed.split("/").length > 2 && !trimmed.includes(" ") && !trimmed.includes(".md"));
-      
-    if (isCommandOutput) {
-      return `> \`${line}\``; // Keep exact spacing inside backticks
-    }
-    return line;
-  });
-  
-  return finalLines.join("\n");
+  return cleaned;
 }
