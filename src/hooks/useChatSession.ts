@@ -320,7 +320,7 @@ export function useChatSession({
           // Check if agy has returned to interactive prompt input mode (? for shortcuts)
           const hasAgyPrompt = rawToClean.includes("? for shortcuts") || rawToClean.includes("shortcuts") || cleanText.includes("shortcuts");
 
-          // Filter out user's last sent query echo-back and any fragmented echoing of it (substrings)
+           // Filter out user's last sent query echo-back and any fragmented echoing of it (substrings)
           const lastSent = lastSentTextRef.current;
           if (lastSent) {
             const lines = cleanText.split("\n");
@@ -328,22 +328,13 @@ export function useChatSession({
               const trimmed = line.trim();
               if (!trimmed) return true;
               
-              // If the entire trimmed line is a substring of the last query, it is an echo fragment
-              if (lastSent.includes(trimmed)) {
+              // Only filter out echo fragments if the line is long enough (prevents breaking output details)
+              if (trimmed.length >= 3 && lastSent.includes(trimmed)) {
                 return false;
               }
               return true;
             });
             cleanText = filteredLines.join("\n");
-          }
-
-          // Also clean duplicate echoing of first character prefix if any
-          if (lastSent) {
-            const firstChar = lastSent.charAt(0);
-            if (firstChar && firstChar.trim()) {
-              const repRegex = new RegExp(`${firstChar}{2,}`, "g");
-              cleanText = cleanText.replace(repRegex, "");
-            }
           }
 
           if (!cleanText.trim() && !hasAgyPrompt) return;
