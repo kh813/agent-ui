@@ -44,7 +44,7 @@ export const themes: Record<string, ThemeConfig> = {
       magenta: "#9333ea",
       cyan: "#0891b2",
       white: "#cbd5e1",
-      brightBlack: "#475569", // Darker gray for high contrast on light backgrounds
+      brightBlack: "#1e293b", // Dark navy for high contrast on light backgrounds
       brightRed: "#ef4444",
       brightGreen: "#22c55e",
       brightYellow: "#eab308",
@@ -96,7 +96,7 @@ export const themes: Record<string, ThemeConfig> = {
       magenta: "#d33682",
       cyan: "#2aa198",
       white: "#eee8d5",
-      brightBlack: "#586e75", // base01 - Thought logs visible
+      brightBlack: "#073642", // base02 - Thought logs dark navy-green for high contrast
       brightRed: "#cb4b16",
       brightGreen: "#586e75",
       brightYellow: "#93a1a1",
