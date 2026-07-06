@@ -42,23 +42,29 @@ fn get_exe_dir() -> Option<PathBuf> {
 
 #[tauri::command]
 pub fn get_app_config(cwd: Option<String>) -> AppConfig {
-    // 1. Search in the CWD (Working directory)
+    let mut search_paths = Vec::new();
+
+    // 1. Search in the CWD (Selected Working Directory)
     if let Some(ref cwd_str) = cwd {
-        let cwd_path = Path::new(cwd_str).join("agent_config.json");
-        if cwd_path.exists() {
-            if let Ok(content) = fs::read_to_string(&cwd_path) {
-                if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
-                    return config;
-                }
-            }
-        }
+        let cwd_base = Path::new(cwd_str);
+        search_paths.push(cwd_base.join("agent_config.json"));
+        search_paths.push(cwd_base.join("config").join("agent_config.json"));
     }
 
     // 2. Search in the directory containing the executable
     if let Some(exe_dir) = get_exe_dir() {
-        let config_path = exe_dir.join("agent_config.json");
-        if config_path.exists() {
-            if let Ok(content) = fs::read_to_string(&config_path) {
+        search_paths.push(exe_dir.join("agent_config.json"));
+        search_paths.push(exe_dir.join("config").join("agent_config.json"));
+    }
+
+    // 3. Search in the current runtime working directory
+    search_paths.push(PathBuf::from("agent_config.json"));
+    search_paths.push(PathBuf::from("config").join("agent_config.json"));
+
+    // Traverse and load the first valid config file found
+    for path in search_paths {
+        if path.exists() {
+            if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
                     return config;
                 }
@@ -66,16 +72,6 @@ pub fn get_app_config(cwd: Option<String>) -> AppConfig {
         }
     }
 
-    // 3. Search in the current runtime working directory
-    let runtime_path = Path::new("agent_config.json");
-    if runtime_path.exists() {
-        if let Ok(content) = fs::read_to_string(&runtime_path) {
-            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
-                return config;
-            }
-        }
-    }
-
-    // 4. Return default fallback
+    // Return default fallback
     AppConfig::default()
 }
