@@ -1,7 +1,94 @@
-# Tauri + React + Typescript
+# agent-ui
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+`agent-ui` は、AIベースのコマンドラインツール（主に **Antigravity CLI (`agy`)**）をデスクトップ上で快適に操作するための、マルチAI CLIラッパーデスクトップアプリケーションです。
 
-## Recommended IDE Setup
+Tauri、Rust、および React を使用して構築されており、軽量でセキュア、そしてプレミアムなデザインのデスクトップインターフェースを提供します。
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+---
+
+## 🌟 主な機能
+
+* **リアルタイム PTY ストリーミング**
+  * バックエンドで疑似ターミナル（PTY）を制御し、xterm.js を通じて高速かつスムーズにCLI出力を表示します。
+* **対話型チャットコンソール**
+  * 美しく使いやすいチャット型のインターフェースにより、CLIコマンドを入力せずに直感的なやり取りが可能です。
+* **スキル（`skill`）フォルダの自動検出・リビルド**
+  * 選択した作業ディレクトリ（CWD）内に `skill` フォルダがある場合、セッション開始前に自動でスキルのリビルド（`agy build`）をバックエンドで実行します。
+* **作業ディレクトリ（CWD）の切り替え**
+  * セッション開始前に、UIから直感的に作業ディレクトリを選択・変更できます。
+* **リアルタイム・テーマ切り替え**
+  * UI全体の配色およびターミナル背景色を瞬時に切り替え可能。
+  * `Light (Default)`, `Dark`, `Solarized Light`, `Solarized Dark`, `Dracula`, `One Dark` の6種類のカラースキームを内蔵。
+* **ポータブルZIP配布**
+  * インストーラーによる配置ではなく、ダウンロードしたZIPを展開してすぐに実行できるポータブル設計。
+
+---
+
+## 🚀 インストールと起動方法
+
+### macOS (Apple Silicon 向け)
+1. GitHubの Releases から `agent-ui-mac.zip` をダウンロードします。
+2. ZIPを展開し、`agent-ui.app` を任意の場所に配置します。
+3. 未署名アプリとしての macOS 隔離属性（quarantine）を解除するため、ターミナルで以下を実行します：
+   ```bash
+   xattr -cr /path/to/agent-ui.app
+   ```
+4. アプリをダブルクリックして起動します。
+
+💡 同階層に以下のシェルスクリプト（`.command`）ファイルを作成しておくと、次回からダブルクリックだけで起動できます。
+```bash
+#!/bin/bash
+cd "$(dirname "$0")"
+xattr -cr ./agent-ui.app
+open ./agent-ui.app
+```
+
+### Windows
+1. GitHubの Releases から `agent-ui-win.zip` をダウンロードします。
+2. ZIPを展開し、中にある `agent-ui.exe` を実行します。
+
+---
+
+## 🛠️ 開発者向けセットアップ
+
+ローカル環境でのビルドおよび実行手順です。
+
+### 前提条件
+* [Rust](https://www.rust-lang.org/) (stable)
+* [Node.js](https://nodejs.org/) (v20以上推奨)
+
+### 手順
+
+1. **依存関係のインストール**
+   ```bash
+   npm install
+   ```
+
+2. **開発サーバーの起動 (Live Reload)**
+   ```bash
+   npm run tauri dev
+   ```
+
+3. **ローカルでのプロダクションビルド**
+   * **macOS (Apple Silicon)**
+     ```bash
+     npm run tauri build -- --target aarch64-apple-darwin
+     ```
+   * **Windows**
+     ```bash
+     npm run tauri build
+     ```
+
+---
+
+## 📦 自動リリースビルド (CI/CD)
+
+本プロジェクトは GitHub Actions による自動ビルドワークフローを統合しています。
+
+1. プロジェクトバージョン（`package.json`, `Cargo.toml`, `tauri.conf.json`）を更新します。
+2. バージョンタグ（例: `v0.0.1`）を作成して GitHub にプッシュします：
+   ```bash
+   git tag -a v0.0.1 -m "Release v0.0.1"
+   git push origin v0.0.1
+   ```
+3. GitHub Actions 上で自動的にコンパイルが走り、バイナリが ZIP にパッケージングされて自動公開されます。
