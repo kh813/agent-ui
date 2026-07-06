@@ -6,6 +6,7 @@ import { Terminal } from "@xterm/xterm";
 import { useChatSession } from "./hooks/useChatSession";
 import { TerminalView } from "./components/TerminalView";
 import { subscribeToTauriEvent } from "./lib/tauriListener";
+import { themes } from "./utils/themes";
 import "./App.css";
 
 interface AgentStatus {
@@ -32,6 +33,18 @@ function App() {
   const [shellPath, setShellPath] = useState(defaultShell);
   const [shellArgs, setShellArgs] = useState("");
   const [input, setInput] = useState("");
+
+  // Theme State
+  const [currentThemeId, setCurrentThemeId] = useState(() => {
+    return localStorage.getItem("agent-ui-theme") || "dark";
+  });
+
+  // Sync theme with body class
+  useEffect(() => {
+    localStorage.setItem("agent-ui-theme", currentThemeId);
+    const isDark = themes[currentThemeId]?.isDark ?? true;
+    document.body.classList.toggle("theme-dark", isDark);
+  }, [currentThemeId]);
 
   // Agent Onboarding & Selection States
   const [selectedAgentId, setSelectedAgentId] = useState("agy");
@@ -284,36 +297,55 @@ function App() {
       <header className="app-header">
         <h1 className="app-title">agent-ui Chat Console</h1>
 
-        {agyStatus.installed && (
-          <div className="controls-group">
-            <div className="cwd-display" title={cwd || "Default working directory"}>
-              <span className="cwd-label">CWD:</span>
-              <span className="cwd-path">{cwd || "App Location (Default)"}</span>
-            </div>
+        <div className="controls-group">
+          {agyStatus.installed && (
+            <>
+              <div className="cwd-display" title={cwd || "Default working directory"}>
+                <span className="cwd-label">CWD:</span>
+                <span className="cwd-path">{cwd || "App Location (Default)"}</span>
+              </div>
 
-            <button
-              className="secondary"
-              onClick={handleSelectDirectory}
-              disabled={status === "running"}
-            >
-              Change Dir
-            </button>
-
-            <div className={`status-badge ${status}`}>
-              {status}
-            </div>
-
-            {status === "running" ? (
-              <button className="danger" onClick={stopSession}>
-                Stop
+              <button
+                className="secondary"
+                onClick={handleSelectDirectory}
+                disabled={status === "running"}
+              >
+                Change Dir
               </button>
-            ) : (
-              <button className="primary" onClick={handleStartPty}>
-                Start Session
-              </button>
-            )}
-          </div>
-        )}
+            </>
+          )}
+
+          <select
+            className="theme-selector"
+            value={currentThemeId}
+            onChange={(e) => setCurrentThemeId(e.target.value)}
+            title="Select Theme"
+          >
+            {Object.entries(themes).map(([id, t]) => (
+              <option key={id} value={id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+
+          {agyStatus.installed && (
+            <>
+              <div className={`status-badge ${status}`}>
+                {status}
+              </div>
+
+              {status === "running" ? (
+                <button className="danger" onClick={stopSession}>
+                  Stop
+                </button>
+              ) : (
+                <button className="primary" onClick={handleStartPty}>
+                  Start Session
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </header>
 
       {/* Update Alert Notification Banner */}
@@ -463,6 +495,7 @@ function App() {
                     terminalRef={terminalRef}
                     onData={handleTerminalInput}
                     onResize={handleTerminalResize}
+                    theme={themes[currentThemeId].terminal}
                   />
                 </div>
               </div>
@@ -484,6 +517,7 @@ function App() {
                     terminalRef={terminalRef}
                     onData={handleTerminalInput}
                     onResize={handleTerminalResize}
+                    theme={themes[currentThemeId].terminal}
                   />
                 </div>
               </div>
@@ -495,8 +529,8 @@ function App() {
                 <div style={{
                   marginTop: "12px",
                   padding: "12px",
-                  background: "rgba(255, 255, 255, 0.9)",
-                  border: "1px solid rgba(0, 0, 0, 0.08)",
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--input-border)",
                   borderRadius: "8px",
                   display: "flex",
                   flexDirection: "column",

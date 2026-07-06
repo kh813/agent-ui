@@ -2,18 +2,16 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { computeFitSize } from "../lib/terminalFit";
+import { TerminalTheme } from "../utils/themes";
 
 interface TerminalViewProps {
   onData?: (data: string) => void;
   terminalRef: React.MutableRefObject<Terminal | null>;
-  // Reports the fitted terminal size (rows/cols) whenever it changes, so the
-  // PTY on the Rust side can be kept in sync. A CLI that redraws via relative
-  // cursor movement (e.g. "up N rows, clear, redraw") will target the wrong
-  // row if it's been told a different size than what's actually rendered.
   onResize?: (size: { rows: number; cols: number }) => void;
+  theme: TerminalTheme;
 }
 
-export function TerminalView({ onData, terminalRef, onResize }: TerminalViewProps) {
+export function TerminalView({ onData, terminalRef, onResize, theme }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,29 +20,7 @@ export function TerminalView({ onData, terminalRef, onResize }: TerminalViewProp
     // Initialize xterm.js Terminal
     const term = new Terminal({
       cursorBlink: true,
-      theme: {
-        background: "#f8fafc",
-        foreground: "#0f172a",
-        cursor: "#0f172a",
-        selectionBackground: "rgba(59, 130, 246, 0.3)",
-        // ANSI colors adjusted for light theme readability
-        black: "#0f172a",
-        brightBlack: "#475569", // Darker gray for metadata/thoughts to be readable
-        red: "#dc2626",
-        brightRed: "#ef4444",
-        green: "#16a34a",
-        brightGreen: "#22c55e",
-        yellow: "#ca8a04",
-        brightYellow: "#eab308",
-        blue: "#2563eb",
-        brightBlue: "#3b82f6",
-        magenta: "#9333ea",
-        brightMagenta: "#a855f7",
-        cyan: "#0891b2",
-        brightCyan: "#06b6d4",
-        white: "#e2e8f0",
-        brightWhite: "#f1f5f9",
-      },
+      theme: theme,
       fontSize: 13,
       fontFamily: "Menlo, Monaco, 'Courier New', monospace",
     });
@@ -128,16 +104,24 @@ export function TerminalView({ onData, terminalRef, onResize }: TerminalViewProp
     };
   }, [onData, terminalRef, onResize]);
 
+  // Handle dynamic theme changes without re-creating terminal instance
+  useEffect(() => {
+    if (terminalRef.current && theme) {
+      terminalRef.current.options.theme = theme;
+    }
+  }, [theme, terminalRef]);
+
   return (
     <div
       ref={containerRef}
       style={{
         width: "100%",
         height: "100%",
-        backgroundColor: "#f8fafc",
+        backgroundColor: theme.background,
         padding: "5px",
         borderRadius: "5px",
         overflow: "hidden",
+        transition: "background-color 0.2s ease",
       }}
     />
   );
