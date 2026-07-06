@@ -462,7 +462,7 @@ button:disabled {
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 225px;
+  width: 220px;
   background: var(--sidebar-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
