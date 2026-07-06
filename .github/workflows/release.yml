@@ -43,8 +43,8 @@ jobs:
       - name: package macOS app to zip
         if: matrix.platform == 'macos-latest'
         run: |
-          cd src-tauri/target/release/bundle/macos
-          zip -r ../../../../agent-ui-mac.zip agent-ui.app
+          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
+          zip -r ${{ github.workspace }}/agent-ui-mac.zip agent-ui.app
 
       - name: package Windows exe to zip
         if: matrix.platform == 'windows-latest'
