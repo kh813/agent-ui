@@ -423,6 +423,7 @@ function App() {
             <div
               className={`agent-item ${selectedAgentId === "agy" ? "active" : ""}`}
               onClick={() => setSelectedAgentId("agy")}
+              title="Antigravity CLI"
             >
               <div className="agent-name-row">
                 <span className="agent-name">Antigravity</span>
