@@ -36,13 +36,22 @@ function App() {
 
   // Theme State
   const [currentThemeId, setCurrentThemeId] = useState(() => {
-    return localStorage.getItem("agent-ui-theme") || "dark";
+    return localStorage.getItem("agent-ui-theme") || "light";
   });
 
   // Sync theme with body class
   useEffect(() => {
     localStorage.setItem("agent-ui-theme", currentThemeId);
-    const isDark = themes[currentThemeId]?.isDark ?? true;
+    
+    // Remove all theme classes first
+    const classesToRemove = Array.from(document.body.classList).filter(c => c.startsWith("theme-"));
+    classesToRemove.forEach(c => document.body.classList.remove(c));
+    
+    // Add specific theme class
+    document.body.classList.add(`theme-${currentThemeId}`);
+    
+    // Also toggle generic theme-dark helper if needed
+    const isDark = themes[currentThemeId]?.isDark ?? false;
     document.body.classList.toggle("theme-dark", isDark);
   }, [currentThemeId]);
 
@@ -298,23 +307,6 @@ function App() {
         <h1 className="app-title">agent-ui Chat Console</h1>
 
         <div className="controls-group">
-          {agyStatus.installed && (
-            <>
-              <div className="cwd-display" title={cwd || "Default working directory"}>
-                <span className="cwd-label">CWD:</span>
-                <span className="cwd-path">{cwd || "App Location (Default)"}</span>
-              </div>
-
-              <button
-                className="secondary"
-                onClick={handleSelectDirectory}
-                disabled={status === "running"}
-              >
-                Change Dir
-              </button>
-            </>
-          )}
-
           <select
             className="theme-selector"
             value={currentThemeId}
@@ -330,6 +322,19 @@ function App() {
 
           {agyStatus.installed && (
             <>
+              <div className="cwd-display" title={cwd || "Default working directory"}>
+                <span className="cwd-label">CWD:</span>
+                <span className="cwd-path">{cwd || "App Location (Default)"}</span>
+              </div>
+
+              <button
+                className="secondary"
+                onClick={handleSelectDirectory}
+                disabled={status === "running"}
+              >
+                Change Dir
+              </button>
+
               <div className={`status-badge ${status}`}>
                 {status}
               </div>

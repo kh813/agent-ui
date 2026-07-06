@@ -28,8 +28,34 @@ export interface ThemeConfig {
 }
 
 export const themes: Record<string, ThemeConfig> = {
+  light: {
+    name: "Light (Default)",
+    isDark: false,
+    terminal: {
+      background: "#f8fafc",
+      foreground: "#0f172a",
+      cursor: "#0f172a",
+      selectionBackground: "rgba(59, 130, 246, 0.2)",
+      black: "#0f172a",
+      red: "#dc2626",
+      green: "#16a34a",
+      yellow: "#ca8a04",
+      blue: "#2563eb",
+      magenta: "#9333ea",
+      cyan: "#0891b2",
+      white: "#cbd5e1",
+      brightBlack: "#475569", // Darker gray for high contrast on light backgrounds
+      brightRed: "#ef4444",
+      brightGreen: "#22c55e",
+      brightYellow: "#eab308",
+      brightBlue: "#3b82f6",
+      brightMagenta: "#a855f7",
+      brightCyan: "#06b6d4",
+      brightWhite: "#f8fafc",
+    }
+  },
   dark: {
-    name: "Dark (Default)",
+    name: "Dark",
     isDark: true,
     terminal: {
       background: "#0f172a", // slate-900
@@ -54,30 +80,56 @@ export const themes: Record<string, ThemeConfig> = {
       brightWhite: "#f8fafc",
     }
   },
-  light: {
-    name: "Light",
+  solarizedLight: {
+    name: "Solarized Light",
     isDark: false,
     terminal: {
-      background: "#f8fafc",
-      foreground: "#0f172a",
-      cursor: "#0f172a",
-      selectionBackground: "rgba(59, 130, 246, 0.2)",
-      black: "#0f172a",
-      red: "#dc2626",
-      green: "#16a34a",
-      yellow: "#ca8a04",
-      blue: "#2563eb",
-      magenta: "#9333ea",
-      cyan: "#0891b2",
-      white: "#cbd5e1",
-      brightBlack: "#475569", // Darker gray for high contrast on light backgrounds
-      brightRed: "#ef4444",
-      brightGreen: "#22c55e",
-      brightYellow: "#eab308",
-      brightBlue: "#3b82f6",
-      brightMagenta: "#a855f7",
-      brightCyan: "#06b6d4",
-      brightWhite: "#f8fafc",
+      background: "#fdf6e3", // base3
+      foreground: "#657b83", // base00
+      cursor: "#657b83",
+      selectionBackground: "rgba(147, 161, 161, 0.3)",
+      black: "#073642",
+      red: "#dc322f",
+      green: "#859900",
+      yellow: "#b58900",
+      blue: "#268bd2",
+      magenta: "#d33682",
+      cyan: "#2aa198",
+      white: "#eee8d5",
+      brightBlack: "#586e75", // base01 - Thought logs visible
+      brightRed: "#cb4b16",
+      brightGreen: "#586e75",
+      brightYellow: "#93a1a1",
+      brightBlue: "#839496",
+      brightMagenta: "#6c71c4",
+      brightCyan: "#2aa198",
+      brightWhite: "#fdf6e3",
+    }
+  },
+  solarizedDark: {
+    name: "Solarized Dark",
+    isDark: true,
+    terminal: {
+      background: "#002b36", // base03
+      foreground: "#839496", // base0
+      cursor: "#839496",
+      selectionBackground: "rgba(7, 54, 66, 0.5)",
+      black: "#073642",
+      red: "#dc322f",
+      green: "#859900",
+      yellow: "#b58900",
+      blue: "#268bd2",
+      magenta: "#d33682",
+      cyan: "#2aa198",
+      white: "#eee8d5",
+      brightBlack: "#586e75", // base01
+      brightRed: "#cb4b16",
+      brightGreen: "#586e75",
+      brightYellow: "#93a1a1",
+      brightBlue: "#839496",
+      brightMagenta: "#6c71c4",
+      brightCyan: "#2aa198",
+      brightWhite: "#fdf6e3",
     }
   },
   dracula: {
