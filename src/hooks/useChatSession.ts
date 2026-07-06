@@ -60,24 +60,41 @@ export function useChatSession({
   // Start PTY Session
   const startSession = useCallback(
     async (targetCwd: string = cwdRef.current) => {
+      const isJa = navigator.language.startsWith("ja");
       setStatus("idle");
       setActivePrompt(null);
-      showStatusMessage(`Starting session in directory: ${targetCwd || "default"}`);
+      showStatusMessage(
+        isJa
+          ? `ディレクトリでセッションを開始しています: ${targetCwd || "デフォルト"}`
+          : `Starting session in directory: ${targetCwd || "default"}`
+      );
 
       try {
         // Task 9-5 & 9-6: Check and auto-rebuild skill folder if exists
         const hasSkill = await invoke<boolean>("check_skill_folder", { cwd: targetCwd || "" });
         if (hasSkill) {
-          showStatusMessage("🛠️ Skill folder detected. Rebuilding skill before starting session...", false);
+          showStatusMessage(
+            isJa
+              ? "🛠️ skill フォルダを検出しました。セッション開始前にスキルをリビルドしています..."
+              : "🛠️ Skill folder detected. Rebuilding skill before starting session...",
+            false
+          );
 
           try {
             await invoke<string>("build_skill", {
               cwd: targetCwd || "",
               agentId: "agy",
             });
-            showStatusMessage("✓ Skill rebuild succeeded!");
+            showStatusMessage(
+              isJa ? "✓ スキルのリビルドが成功しました！" : "✓ Skill rebuild succeeded!"
+            );
           } catch (buildErr: any) {
-            showStatusMessage(`⚠️ Skill rebuild failed. Starting session anyway.\n${buildErr.toString()}`, false);
+            showStatusMessage(
+              isJa
+                ? `⚠️ スキルのリビルドに失敗しました。セッションをそのまま開始します。\n${buildErr.toString()}`
+                : `⚠️ Skill rebuild failed. Starting session anyway.\n${buildErr.toString()}`,
+              false
+            );
           }
         }
 
@@ -93,7 +110,12 @@ export function useChatSession({
         setCwd(targetCwd);
       } catch (e: any) {
         setStatus("error");
-        showStatusMessage(`Failed to start session: ${e.toString()}`, false);
+        showStatusMessage(
+          isJa
+            ? `セッションの開始に失敗しました: ${e.toString()}`
+            : `Failed to start session: ${e.toString()}`,
+          false
+        );
       }
     },
     [command, defaultArgs, showStatusMessage, getTerminalSize]
@@ -101,10 +123,13 @@ export function useChatSession({
 
   // Stop PTY Session
   const stopSession = useCallback(async () => {
+    const isJa = navigator.language.startsWith("ja");
     try {
       await invoke("stop_pty");
       setStatus("idle");
-      showStatusMessage("Session stopped by user.");
+      showStatusMessage(
+        isJa ? "ユーザーによってセッションが停止されました。" : "Session stopped by user."
+      );
     } catch (e: any) {
       console.error("Failed to stop PTY:", e);
     }

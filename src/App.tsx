@@ -7,6 +7,7 @@ import { useChatSession } from "./hooks/useChatSession";
 import { TerminalView } from "./components/TerminalView";
 import { subscribeToTauriEvent } from "./lib/tauriListener";
 import { themes } from "./utils/themes";
+import { Lang, translations } from "./utils/i18n";
 import "./App.css";
 
 interface AgentStatus {
@@ -54,6 +55,14 @@ function App() {
     const isDark = themes[currentThemeId]?.isDark ?? false;
     document.body.classList.toggle("theme-dark", isDark);
   }, [currentThemeId]);
+
+  // OS locale auto detection (JA if OS language starts with 'ja', otherwise EN)
+  const lang: Lang = navigator.language.startsWith("ja") ? "ja" : "en";
+
+  // Translation helper
+  const t = (key: keyof typeof translations['ja']) => {
+    return translations[lang][key];
+  };
 
   // Agent Onboarding & Selection States
   const [selectedAgentId, setSelectedAgentId] = useState("agy");
@@ -240,7 +249,7 @@ function App() {
     } catch (e: any) {
       setIsInstalling(false);
       console.error("Installation failed to launch:", e);
-      alert(`Failed to launch installer: ${e.toString()}`);
+      alert(`${t("failedToInstall")}: ${e.toString()}`);
     }
   };
 
@@ -265,7 +274,7 @@ function App() {
     } catch (e: any) {
       setIsUpdating(false);
       console.error("Update failed to launch:", e);
-      alert(`Failed to launch updater: ${e.toString()}`);
+      alert(`${t("failedToUpdate")}: ${e.toString()}`);
     }
   };
 
@@ -276,7 +285,7 @@ function App() {
         directory: true,
         multiple: false,
         defaultPath: cwd || undefined,
-        title: "Select Working Directory",
+        title: t("selectWorkingDir"),
       });
 
       if (selected && typeof selected === "string") {
@@ -304,7 +313,7 @@ function App() {
     <div className="app-container">
       {/* Header and Connection Panel */}
       <header className="app-header">
-        <h1 className="app-title">agent-ui Chat Console</h1>
+        <h1 className="app-title">{t("appTitle")}</h1>
 
         <div className="controls-group">
           <select
@@ -324,7 +333,7 @@ function App() {
             <>
               <div className="cwd-display" title={cwd || "Default working directory"}>
                 <span className="cwd-label">CWD:</span>
-                <span className="cwd-path">{cwd || "App Location (Default)"}</span>
+                <span className="cwd-path">{cwd || t("appLocationDefault")}</span>
               </div>
 
               <button
@@ -332,7 +341,7 @@ function App() {
                 onClick={handleSelectDirectory}
                 disabled={status === "running"}
               >
-                Change Dir
+                {t("changeDir")}
               </button>
 
               <div className={`status-badge ${status}`}>
@@ -341,11 +350,11 @@ function App() {
 
               {status === "running" ? (
                 <button className="danger" onClick={stopSession}>
-                  Stop
+                  {t("stop")}
                 </button>
               ) : (
                 <button className="primary" onClick={handleStartPty}>
-                  Start Session
+                  {t("startSession")}
                 </button>
               )}
             </>
@@ -367,9 +376,9 @@ function App() {
           backdropFilter: "blur(8px)"
         }}>
           <div>
-            ⚠️ <strong>Antigravity CLI</strong> の新バージョン <strong>{updateStatus.latest_version}</strong> が利用可能です。(現在のバージョン: {updateStatus.current_version})
+            {t("updateAvailableMsg").replace("{latest}", updateStatus.latest_version || "").replace("{current}", updateStatus.current_version || "")}
             <span style={{ fontSize: "0.75rem", color: "#94a3b8", marginLeft: "12px" }}>
-              ※本エージェントは自己更新に対応しています。二重更新の防止のため、他で実行中の場合は終了をお待ちください。
+              {t("updateNote")}
             </span>
           </div>
           <button
@@ -387,7 +396,7 @@ function App() {
               fontSize: "0.8rem"
             }}
           >
-            {isUpdating ? "更新中 (ログ確認)..." : "今すぐ更新"}
+            {isUpdating ? t("updating") : t("updateNow")}
           </button>
         </div>
       )}
@@ -417,7 +426,7 @@ function App() {
       <div className="app-body-layout">
         {/* Sidebar panel */}
         <aside className="sidebar">
-          <div className="sidebar-title">AI Engines</div>
+          <div className="sidebar-title">{t("aiEngines")}</div>
 
           <div className="agent-list">
             <div
@@ -428,11 +437,11 @@ function App() {
               <div className="agent-name-row">
                 <span className="agent-name">Antigravity</span>
                 <span className={`agent-badge ${agyStatus.installed ? "installed" : "not-installed"}`}>
-                  {agyStatus.installed ? "Installed" : "Missing"}
+                  {agyStatus.installed ? t("installed") : t("missing")}
                 </span>
               </div>
               <div className="agent-version">
-                {agyStatus.installed ? agyStatus.version || "version loaded" : "Require setup"}
+                {agyStatus.installed ? agyStatus.version || t("versionLoaded") : t("requireSetup")}
               </div>
             </div>
 
@@ -441,17 +450,17 @@ function App() {
                 <div className="agent-name-row">
                   <span className="agent-name">Claude Code</span>
                   <span className="agent-badge not-installed" style={{ background: "rgba(100, 116, 139, 0.15)", color: "#94a3b8" }}>
-                    Roadmap
+                    {t("roadmap")}
                   </span>
                 </div>
-                <div className="agent-version">Not supported</div>
+                <div className="agent-version">{t("notSupported")}</div>
               </div>
             )}
           </div>
 
           {/* Settings Section inside Sidebar */}
           <div style={{ marginTop: "auto", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "16px" }}>
-            <div className="sidebar-title" style={{ marginBottom: "8px" }}>App Settings</div>
+            <div className="sidebar-title" style={{ marginBottom: "8px" }}>{t("appSettings")}</div>
             <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.8rem", color: "#94a3b8", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -461,7 +470,7 @@ function App() {
                   localStorage.setItem("autoCheckUpdate", e.target.checked.toString());
                 }}
               />
-              起動時に更新を確認する
+              {t("checkUpdatesStartup")}
             </label>
           </div>
         </aside>
@@ -472,19 +481,18 @@ function App() {
           <div className="onboarding-panel" style={{ display: "flex", flexDirection: isInstallTerminalOpen ? "row" : "column", gap: "24px", width: "100%" }}>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
               <div className="onboarding-icon">🌌</div>
-              <h2 className="onboarding-title">Antigravity CLI required</h2>
+              <h2 className="onboarding-title">{t("installAgyRequired")}</h2>
               <p className="onboarding-desc">
-                This desktop client runs Antigravity CLI (agy) under the hood to perform tasks.
-                We detected that "agy" is currently not installed or not in your system path.
+                {t("installAgyDesc")}
               </p>
 
               {isInstalling ? (
                 <button className="primary" disabled style={{ background: "#64748b" }}>
-                  Installing agent (logs in console)...
+                  {t("installingAgent")}
                 </button>
               ) : (
                 <button className="primary" onClick={handleInstallAgy} style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", fontSize: "1.1rem", padding: "12px 24px" }}>
-                  Install Antigravity CLI
+                  {t("installButton")}
                 </button>
               )}
             </div>
@@ -493,8 +501,8 @@ function App() {
             {isInstallTerminalOpen && (
               <div className="terminal-panel" style={{ flex: 1, minHeight: "350px", height: "100%" }}>
                 <div className="terminal-header">
-                  <span>INSTALLATION LOGS (PTY STREAM)</span>
-                  <span style={{ color: "#ef4444" }}>RUNNING</span>
+                  <span>{t("installLogs")}</span>
+                  <span style={{ color: "#ef4444" }}>{t("running").toUpperCase()}</span>
                 </div>
                 <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
                   <TerminalView
@@ -513,7 +521,7 @@ function App() {
             <div className="chat-panel">
               <div className="terminal-panel" style={{ flex: 1 }}>
                 <div className="terminal-header">
-                  <span>{isUpdating ? "UPDATE LOGS (PTY STREAM)" : "ANTIGRAVITY CLI"}</span>
+                  <span>{isUpdating ? t("updateLogs") : "ANTIGRAVITY CLI"}</span>
                   <span style={{ color: status === "running" ? "#4caf50" : "#94a3b8" }}>
                     {status.toUpperCase()}
                   </span>
@@ -566,14 +574,14 @@ function App() {
                             onClick={() => respondToPrompt("y")}
                             style={{ padding: "6px 16px" }}
                           >
-                            はい (Yes)
+                            {t("yes")}
                           </button>
                           <button
                             className="secondary"
                             onClick={() => respondToPrompt("n")}
                             style={{ padding: "6px 16px" }}
                           >
-                            いいえ (No)
+                            {t("no")}
                           </button>
                         </>
                       )}
@@ -588,7 +596,7 @@ function App() {
                           const selected = await open({
                             directory: true,
                             multiple: false,
-                            title: "Select Path for CLI Prompt",
+                            title: t("selectPromptPath"),
                           });
                           if (selected && typeof selected === "string") {
                             respondToPrompt(selected);
@@ -596,7 +604,7 @@ function App() {
                         }}
                         style={{ padding: "6px 16px" }}
                       >
-                        フォルダを選択
+                        {t("selectFolder")}
                       </button>
                     </div>
                   )}
@@ -620,7 +628,7 @@ function App() {
                           boxShadow: "0 2px 8px rgba(16, 185, 129, 0.4)"
                         }}
                       >
-                        ブラウザでログインを開く
+                        {t("openLoginBrowser")}
                       </a>
                     </div>
                   )}
@@ -636,10 +644,10 @@ function App() {
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={
                     status !== "running"
-                      ? "Start a session to interact"
+                      ? t("placeholderStartSession")
                       : hasActivePrompt
-                      ? "Please respond to the interactive prompt above..."
-                      : "Send terminal input..."
+                      ? t("placeholderRespondPrompt")
+                      : t("placeholderSendInput")
                   }
                   disabled={status !== "running" || hasActivePrompt}
                 />
@@ -648,7 +656,7 @@ function App() {
                   className="primary"
                   disabled={status !== "running" || !input.trim()}
                 >
-                  Send
+                  {t("send")}
                 </button>
               </form>
             </div>
