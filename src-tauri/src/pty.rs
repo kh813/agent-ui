@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
@@ -22,6 +23,30 @@ impl Default for PtyState {
             writer: Arc::new(Mutex::new(None)),
             child: Arc::new(Mutex::new(None)),
         }
+    }
+}
+
+// TEMPORARY: shared path for the raw PTY byte log used to diagnose rendering
+// bugs in the upstream CLI's own output. See start_pty_internal (truncates
+// it fresh per session) and resize_pty_internal (appends a marker so a
+// mid-session resize can be correlated against the byte stream around it -
+// suspected of desyncing the upstream CLI's own relative-cursor redraw math
+// from what's actually on screen).
+fn debug_log_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("agent-deck-pty-debug.log")
+}
+
+fn debug_log_marker(text: &str) {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(debug_log_path()) {
+        use std::io::Write as _;
+        let _ = writeln!(f, "\n[agent-deck @ {millis}ms] {text}");
     }
 }
 
@@ -220,11 +245,9 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
 
     // TEMPORARY: raw PTY byte log for diagnosing rendering bugs in the
     // upstream CLI's own output. Truncated fresh on every session start.
-    let debug_log_path = std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("agent-deck-pty-debug.log");
+    let debug_log_path = debug_log_path();
     let _ = std::fs::write(&debug_log_path, b"");
+    debug_log_marker(&format!("start_pty rows={rows} cols={cols}"));
 
     let app_clone = app.clone();
     thread::spawn(move || {
@@ -306,6 +329,7 @@ pub async fn write_to_pty_internal(input: String, state: &PtyState) -> Result<()
 pub async fn resize_pty_internal(rows: u16, cols: u16, state: &PtyState) -> Result<(), String> {
     let session_guard = state.session.lock().await;
     if let Some(ref master) = *session_guard {
+        debug_log_marker(&format!("resize_pty rows={rows} cols={cols}"));
         master
             .resize(PtySize {
                 rows,
@@ -460,8 +484,14 @@ mod tests {
         
         handle.listen("pty-output", move |event| {
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                if let Some(data) = payload.get("data").and_then(|v| v.as_str()) {
-                    let _ = tx_clone.try_send(data.to_string());
+                if let Some(bytes) = payload.get("data").and_then(|v| v.as_array()) {
+                    let data: Vec<u8> = bytes
+                        .iter()
+                        .filter_map(|b| b.as_u64())
+                        .map(|b| b as u8)
+                        .collect();
+                    let text = String::from_utf8_lossy(&data).into_owned();
+                    let _ = tx_clone.try_send(text);
                 }
             }
         });

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { resolvePromptResponseInput } from "../lib/promptResponse";
+import { subscribeToTauriEvent } from "../lib/tauriListener";
 
 export interface PtyPrompt {
   prompt_type: "confirm" | "path" | "login";
@@ -126,18 +128,7 @@ export function useChatSession({
     // user clicks, instead of waiting for the next PTY redraw.
     setActivePrompt(null);
 
-    let inputToSend = responseText + "\n";
-    if (responseText === "Yes, I trust this folder" || responseText === "Yes") {
-      inputToSend = "\r";
-    } else if (responseText === "No, exit") {
-      inputToSend = "[B\r";
-    } else if (responseText.includes("always allow in this conversation")) {
-      inputToSend = "[B\r";
-    } else if (responseText.includes("always allow (Persist to settings.json)") || responseText.includes("Persist to settings.json")) {
-      inputToSend = "[B[B\r";
-    } else if (responseText === "No") {
-      inputToSend = "[B[B[B\r";
-    }
+    const inputToSend = resolvePromptResponseInput(responseText);
 
     try {
       await invoke("write_to_pty", { input: inputToSend });
@@ -157,41 +148,37 @@ export function useChatSession({
 
   // Listen to PTY outputs, status changes, and prompt detections
   useEffect(() => {
-    let unlistenOutput: (() => void) | null = null;
-    let unlistenStatus: (() => void) | null = null;
-    let unlistenPrompt: (() => void) | null = null;
-
     // Raw bytes (not a decoded string - see PtyOutputPayload in pty.rs) go
     // straight to the terminal view. It's a real terminal emulator with its
     // own UTF-8 decoder that correctly buffers a multi-byte character split
     // across separate write() calls, so it resolves cursor movement,
     // redraws, and chunk-boundary encoding all on its own.
-    listen<{ data: number[] }>("pty-output", (event) => {
-      onRawOutput?.(new Uint8Array(event.payload.data));
-    }).then((fn) => {
-      unlistenOutput = fn;
-    });
+    const unsubOutput = subscribeToTauriEvent(
+      listen<{ data: number[] }>("pty-output", (event) => {
+        onRawOutput?.(new Uint8Array(event.payload.data));
+      })
+    );
 
     // PTY interactive prompt detection receiver
-    listen<PtyPrompt>("pty-prompt", (event) => {
-      setActivePrompt(event.payload);
-    }).then((fn) => {
-      unlistenPrompt = fn;
-    });
+    const unsubPrompt = subscribeToTauriEvent(
+      listen<PtyPrompt>("pty-prompt", (event) => {
+        setActivePrompt(event.payload);
+      })
+    );
 
     // PTY status receiver
-    listen<string>("pty-status", (event) => {
-      if (event.payload === "terminated") {
-        setStatus("idle");
-      }
-    }).then((fn) => {
-      unlistenStatus = fn;
-    });
+    const unsubStatus = subscribeToTauriEvent(
+      listen<string>("pty-status", (event) => {
+        if (event.payload === "terminated") {
+          setStatus("idle");
+        }
+      })
+    );
 
     return () => {
-      if (unlistenOutput) unlistenOutput();
-      if (unlistenStatus) unlistenStatus();
-      if (unlistenPrompt) unlistenPrompt();
+      unsubOutput();
+      unsubStatus();
+      unsubPrompt();
     };
   }, [onRawOutput]);
 

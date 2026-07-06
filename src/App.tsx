@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { useChatSession } from "./hooks/useChatSession";
 import { TerminalView } from "./components/TerminalView";
+import { subscribeToTauriEvent } from "./lib/tauriListener";
 import "./App.css";
 
 interface AgentStatus {
@@ -177,28 +178,24 @@ function App() {
 
   // Listen to PTY termination during installation and updates
   useEffect(() => {
-    let unlistenStatus: (() => void) | null = null;
-
-    listen<string>("pty-status", (event) => {
-      if (event.payload === "terminated") {
-        if (isInstalling) {
-          setIsInstalling(false);
-          checkAgentStatus();
+    const unsubStatus = subscribeToTauriEvent(
+      listen<string>("pty-status", (event) => {
+        if (event.payload === "terminated") {
+          if (isInstalling) {
+            setIsInstalling(false);
+            checkAgentStatus();
+          }
+          if (isUpdating) {
+            setIsUpdating(false);
+            checkAgentStatus().then(() => {
+              checkUpdateStatus();
+            });
+          }
         }
-        if (isUpdating) {
-          setIsUpdating(false);
-          checkAgentStatus().then(() => {
-            checkUpdateStatus();
-          });
-        }
-      }
-    }).then((fn) => {
-      unlistenStatus = fn;
-    });
+      })
+    );
 
-    return () => {
-      if (unlistenStatus) unlistenStatus();
-    };
+    return unsubStatus;
   }, [isInstalling, isUpdating, checkAgentStatus, checkUpdateStatus]);
 
   // Trigger installation via PTY
