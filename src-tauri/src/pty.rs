@@ -145,38 +145,41 @@ pub fn detect_prompts(text: &str) -> Option<PtyPromptPayload> {
 
 // --- Internal Logic (Generic Runtime support for testing) ---
 
+fn resolve_project_root(mut path: PathBuf) -> PathBuf {
+    // On macOS, traverse up to get outside of the .app bundle and wrapper folder
+    #[cfg(target_os = "macos")]
+    {
+        // Traverse up 5 times:
+        // 1. Contents/MacOS/agent-ui -> Contents/MacOS
+        // 2. Contents/MacOS -> Contents
+        // 3. Contents -> agent-ui.app
+        // 4. agent-ui.app -> app/ (wrapper folder)
+        // 5. app/ -> actual project root
+        for _ in 0..5 {
+            if let Some(parent) = path.parent() {
+                path = parent.to_path_buf();
+            }
+        }
+        return path;
+    }
+
+    // On Windows/Linux, traverse up to get outside of the app/ wrapper folder
+    #[cfg(not(target_os = "macos"))]
+    {
+        // exe is placed in <project_root>/app/agent-ui.exe -> traverse up twice
+        if let Some(parent) = path.parent().and_then(|p| p.parent()) {
+            return parent.to_path_buf();
+        }
+        if let Some(parent) = path.parent() {
+            return parent.to_path_buf();
+        }
+        path
+    }
+}
+
 fn get_default_cwd() -> PathBuf {
     if let Ok(exe_path) = std::env::current_exe() {
-        let mut path = exe_path.clone();
-        
-        // On macOS, traverse up to get outside of the .app bundle and wrapper folder
-        #[cfg(target_os = "macos")]
-        {
-            // Traverse up 5 times:
-            // 1. Contents/MacOS/agent-ui -> Contents/MacOS
-            // 2. Contents/MacOS -> Contents
-            // 3. Contents -> agent-ui.app
-            // 4. agent-ui.app -> app/ (wrapper folder)
-            // 5. app/ -> actual project root
-            for _ in 0..5 {
-                if let Some(parent) = path.parent() {
-                    path = parent.to_path_buf();
-                }
-            }
-            return path;
-        }
-
-        // On Windows/Linux, traverse up to get outside of the app/ wrapper folder
-        #[cfg(not(target_os = "macos"))]
-        {
-            // exe is placed in <project_root>/app/agent-ui.exe -> traverse up twice
-            if let Some(parent) = path.parent().and_then(|p| p.parent()) {
-                return parent.to_path_buf();
-            }
-            if let Some(parent) = path.parent() {
-                return parent.to_path_buf();
-            }
-        }
+        return resolve_project_root(exe_path);
     }
     
     // Fallback to home directory without external dirs dependency
@@ -534,5 +537,33 @@ mod tests {
         assert!(!cwd.to_string_lossy().is_empty());
         assert!(cwd.exists());
         assert!(cwd.is_dir());
+    }
+
+    #[test]
+    fn test_resolve_project_root_hierarchy() {
+        #[cfg(target_os = "macos")]
+        {
+            let mock_exe = PathBuf::from("/Users/test/agent-deck/app/agent-ui.app/Contents/MacOS/agent-ui");
+            let resolved = resolve_project_root(mock_exe);
+            assert_eq!(resolved, PathBuf::from("/Users/test/agent-deck"));
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            // Windows mock path (testing with backslashes on windows, forward slashes on linux)
+            let mock_exe = if cfg!(target_os = "windows") {
+                PathBuf::from("C:\\Users\\test\\agent-deck\\app\\agent-ui.exe")
+            } else {
+                PathBuf::from("/home/test/agent-deck/app/agent-ui.exe")
+            };
+            let resolved = resolve_project_root(mock_exe.clone());
+            
+            let expected = if cfg!(target_os = "windows") {
+                PathBuf::from("C:\\Users\\test\\agent-deck")
+            } else {
+                PathBuf::from("/home/test/agent-deck")
+            };
+            assert_eq!(resolved, expected);
+        }
     }
 }
