@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{PathBuf, Path};
 
+use crate::pty::resolve_project_root;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EngineConfig {
     pub id: String,
@@ -51,13 +53,22 @@ pub fn get_app_config(cwd: Option<String>) -> AppConfig {
         search_paths.push(cwd_base.join("config").join("agent_config.json"));
     }
 
-    // 2. Search in the directory containing the executable
+    // 2. Search using the same project-root resolution as PTY launch
+    // (macOS bundles need to traverse out of Contents/MacOS + the .app + the
+    // app/ wrapper folder; get_exe_dir() alone only reaches Contents/MacOS).
+    if let Ok(exe_path) = std::env::current_exe() {
+        let project_root = resolve_project_root(exe_path);
+        search_paths.push(project_root.join("agent_config.json"));
+        search_paths.push(project_root.join("config").join("agent_config.json"));
+    }
+
+    // 3. Search in the directory containing the executable
     if let Some(exe_dir) = get_exe_dir() {
         search_paths.push(exe_dir.join("agent_config.json"));
         search_paths.push(exe_dir.join("config").join("agent_config.json"));
     }
 
-    // 3. Search in the current runtime working directory
+    // 4. Search in the current runtime working directory
     search_paths.push(PathBuf::from("agent_config.json"));
     search_paths.push(PathBuf::from("config").join("agent_config.json"));
 

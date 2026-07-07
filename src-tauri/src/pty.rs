@@ -145,7 +145,7 @@ pub fn detect_prompts(text: &str) -> Option<PtyPromptPayload> {
 
 // --- Internal Logic (Generic Runtime support for testing) ---
 
-fn resolve_project_root(mut path: PathBuf) -> PathBuf {
+pub(crate) fn resolve_project_root(mut path: PathBuf) -> PathBuf {
     // On macOS, traverse up to get outside of the .app bundle and wrapper folder
     #[cfg(target_os = "macos")]
     {
