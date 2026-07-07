@@ -27,6 +27,7 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
       theme: theme,
       fontSize: fontSize || 13,
       fontFamily: fontFamily || "Menlo, Monaco, 'Courier New', monospace",
+      allowProposedApi: true,
     });
 
     term.loadAddon(new WebLinksAddon());
