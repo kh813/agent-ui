@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { computeFitSize } from "../lib/terminalFit";
 import { TerminalTheme } from "../utils/themes";
@@ -26,6 +27,8 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
       fontSize: fontSize || 13,
       fontFamily: fontFamily || "Menlo, Monaco, 'Courier New', monospace",
     });
+
+    term.loadAddon(new WebLinksAddon());
 
     // Open terminal in the container DOM element
     term.open(containerRef.current);
