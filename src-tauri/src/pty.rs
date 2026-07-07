@@ -574,4 +574,78 @@ mod tests {
             assert_eq!(resolved, expected);
         }
     }
+
+    #[tokio::test]
+    async fn test_pty_env_propagation() {
+        use tauri::test::mock_app;
+        use tauri::Listener;
+
+        let app = mock_app();
+        let handle = app.handle().clone();
+        let state = PtyState::default();
+
+        // Print target environment variables to verify they propagate properly
+        #[cfg(not(target_os = "windows"))]
+        let cmd = "sh".to_string();
+        #[cfg(not(target_os = "windows"))]
+        let args = vec![
+            "-c".to_string(),
+            "echo TERM=$TERM; echo COLORTERM=$COLORTERM; echo PYTHONIOENCODING=$PYTHONIOENCODING".to_string(),
+        ];
+
+        #[cfg(target_os = "windows")]
+        let cmd = "powershell.exe".to_string();
+        #[cfg(target_os = "windows")]
+        let args = vec![
+            "-Command".to_string(),
+            "Write-Output \"TERM=$env:TERM\"; Write-Output \"COLORTERM=$env:COLORTERM\"; Write-Output \"PYTHONIOENCODING=$env:PYTHONIOENCODING\"".to_string(),
+        ];
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+        let tx_clone = tx.clone();
+        
+        handle.listen("pty-output", move |event| {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                if let Some(bytes) = payload.get("data").and_then(|v| v.as_array()) {
+                    let data: Vec<u8> = bytes
+                        .iter()
+                        .filter_map(|b| b.as_u64())
+                        .map(|b| b as u8)
+                        .collect();
+                    let text = String::from_utf8_lossy(&data).into_owned();
+                    let _ = tx_clone.try_send(text);
+                }
+            }
+        });
+
+        let start_res = start_pty_internal(cmd, args, None, None, None, handle.clone(), &state).await;
+        assert!(start_res.is_ok());
+
+        let mut received = String::new();
+        let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(5));
+        tokio::pin!(timeout);
+
+        loop {
+            tokio::select! {
+                Some(data) = rx.recv() => {
+                    received.push_str(&data);
+                    if received.contains("TERM=xterm-256color") 
+                        && received.contains("COLORTERM=truecolor") 
+                        && received.contains("PYTHONIOENCODING=utf-8") {
+                        break;
+                    }
+                }
+                _ = &mut timeout => {
+                    panic!("Timeout waiting for PTY env. Received: '{}'", received);
+                }
+            }
+        }
+
+        assert!(received.contains("TERM=xterm-256color"));
+        assert!(received.contains("COLORTERM=truecolor"));
+        assert!(received.contains("PYTHONIOENCODING=utf-8"));
+        
+        let stop_res = stop_pty_internal(&state).await;
+        assert!(stop_res.is_ok());
+    }
 }
