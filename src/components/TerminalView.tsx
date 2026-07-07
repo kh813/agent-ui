@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { computeFitSize } from "../lib/terminalFit";
 import { TerminalTheme } from "../utils/themes";
@@ -29,6 +30,8 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
     });
 
     term.loadAddon(new WebLinksAddon());
+    term.loadAddon(new Unicode11Addon());
+    term.unicode.activeVersion = "11";
 
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
