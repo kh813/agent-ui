@@ -527,4 +527,12 @@ mod tests {
         let stop_res = stop_pty_internal(&state).await;
         assert!(stop_res.is_ok());
     }
+
+    #[test]
+    fn test_get_default_cwd() {
+        let cwd = get_default_cwd();
+        assert!(!cwd.to_string_lossy().is_empty());
+        assert!(cwd.exists());
+        assert!(cwd.is_dir());
+    }
 }
