@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import "@xterm/xterm/css/xterm.css";
 import { computeFitSize } from "../lib/terminalFit";
 import { TerminalTheme } from "../utils/themes";
@@ -30,7 +31,9 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
       allowProposedApi: true,
     });
 
-    term.loadAddon(new WebLinksAddon());
+    term.loadAddon(new WebLinksAddon((_event, uri) => {
+      openUrl(uri);
+    }));
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
 
