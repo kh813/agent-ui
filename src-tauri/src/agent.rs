@@ -5,6 +5,13 @@ use std::path::{PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct DetectPaths {
     pub macos: Option<Vec<String>>,
@@ -95,9 +102,11 @@ fn resolve_env_path(path_str: &str) -> PathBuf {
 fn fetch_latest_version_from_web() -> Option<String> {
     let is_windows = cfg!(target_os = "windows");
     let output = if is_windows {
-        Command::new("powershell")
-            .args(&["-Command", "try { (Invoke-WebRequest -UseBasicParsing https://antigravity.google.com/version.txt -TimeoutSec 3).Content.Trim() } catch { exit 1 }"])
-            .output()
+        let mut cmd = Command::new("powershell");
+        cmd.args(&["-Command", "try { (Invoke-WebRequest -UseBasicParsing https://antigravity.google.com/version.txt -TimeoutSec 3).Content.Trim() } catch { exit 1 }"]);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.output()
     } else {
         Command::new("curl")
             .args(&["-fsSL", "--max-time", "3", "https://antigravity.google.com/version.txt"])
@@ -170,9 +179,11 @@ pub async fn detect_agent_internal<R: tauri::Runtime>(
     // 2. Scan system PATH using which/where
     if found_path.is_none() {
         let check_cmd = if is_windows { "where" } else { "which" };
-        let output = Command::new(check_cmd)
-            .arg(&binary_name)
-            .output();
+        let mut cmd = Command::new(check_cmd);
+        cmd.arg(&binary_name);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let output = cmd.output();
 
         if let Ok(out) = output {
             if out.status.success() {
@@ -191,6 +202,8 @@ pub async fn detect_agent_internal<R: tauri::Runtime>(
         // Run <binary> --version to get version string
         let mut cmd = Command::new(&path);
         cmd.args(&version_args);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
 
         let version = cmd.output().ok().and_then(|out| {
             if out.status.success() {
@@ -343,6 +356,8 @@ pub async fn build_skill_internal<R: tauri::Runtime>(
     let mut cmd = std::process::Command::new(&binary_path);
     cmd.arg("build");
     cmd.current_dir(&cwd);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
 
     let output = cmd.output().map_err(|e| format!("Failed to execute build command: {}", e))?;
 
