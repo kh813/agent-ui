@@ -86,3 +86,66 @@ pub fn get_app_config(cwd: Option<String>) -> AppConfig {
     // Return default fallback
     AppConfig::default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_get_app_config_cwd_resolution() {
+        // Create a unique temporary directory
+        let temp_base = std::env::temp_dir().join(format!("agent_ui_test_{}", uuid_like_timestamp()));
+        let config_dir = temp_base.join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        // 1. Test fallback when no file is present
+        let config = get_app_config(Some(temp_base.to_string_lossy().to_string()));
+        assert_eq!(config.app_name, "agent-ui Chat Console"); // default value
+
+        // 2. Test reading config from CWD root (agent_config.json)
+        let config_file_cwd = temp_base.join("agent_config.json");
+        let custom_config_cwd = r#"{
+            "app_name": "Test Custom CWD",
+            "default_theme": "dark",
+            "font_family": "Courier",
+            "font_size": 16,
+            "engines": []
+        }"#;
+        fs::write(&config_file_cwd, custom_config_cwd).unwrap();
+
+        let config = get_app_config(Some(temp_base.to_string_lossy().to_string()));
+        assert_eq!(config.app_name, "Test Custom CWD");
+        assert_eq!(config.default_theme, "dark");
+        assert_eq!(config.font_size, 16);
+
+        // 3. Test reading config from config/ directory (config/agent_config.json)
+        // Delete the root file so it checks the config folder
+        let _ = fs::remove_file(&config_file_cwd);
+
+        let config_file_sub = config_dir.join("agent_config.json");
+        let custom_config_sub = r#"{
+            "app_name": "Test Custom Config Dir",
+            "default_theme": "solarizedDark",
+            "font_family": "Monospace",
+            "font_size": 14,
+            "engines": []
+        }"#;
+        fs::write(&config_file_sub, custom_config_sub).unwrap();
+
+        let config = get_app_config(Some(temp_base.to_string_lossy().to_string()));
+        assert_eq!(config.app_name, "Test Custom Config Dir");
+        assert_eq!(config.default_theme, "solarizedDark");
+        assert_eq!(config.font_size, 14);
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&temp_base);
+    }
+
+    fn uuid_like_timestamp() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    }
+}
