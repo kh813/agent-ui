@@ -231,6 +231,11 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
     cmd.env("LC_ALL", "en_US.UTF-8");
     cmd.env("COLUMNS", cols.to_string());
     cmd.env("LINES", rows.to_string());
+    // Disable raw OSC 8 hyperlinks from upstream CLI (e.g. agy) to avoid display
+    // issues with Unicode escape sequences inside the thought logs. WebLinksAddon
+    // will still automatically detect and linkify plain text HTTP/HTTPS URLs.
+    cmd.env("FORCE_HYPERLINK", "0");
+    cmd.env("TERM_PROGRAM", "");
 
     if let Some(cwd_path) = cwd {
         if !cwd_path.is_empty() {

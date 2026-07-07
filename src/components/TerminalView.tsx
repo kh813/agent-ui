@@ -33,14 +33,39 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       const mod = event.ctrlKey || event.metaKey;
-      if (mod && event.key.toLowerCase() === "c" && term.hasSelection()) {
-        navigator.clipboard.writeText(term.getSelection());
-        return false; // Copy selection, do not forward key to pty
+
+      // Ctrl+Shift+C (or Cmd+Shift+C) - Explicit Copy
+      if (mod && event.shiftKey && event.key.toLowerCase() === "c") {
+        if (term.hasSelection()) {
+          navigator.clipboard.writeText(term.getSelection());
+        }
+        return false;
       }
+
+      // Ctrl+Shift+V (or Cmd+Shift+V) - Explicit Paste
+      if (mod && event.shiftKey && event.key.toLowerCase() === "v") {
+        navigator.clipboard.readText().then((text) => {
+          if (text && onData) {
+            onData(text);
+          }
+        }).catch((err) => {
+          console.error("Failed to read clipboard:", err);
+        });
+        return false;
+      }
+
+      // Ctrl+Shift+A (or Cmd+Shift+A) - Select All
       if (mod && event.shiftKey && event.key.toLowerCase() === "a") {
         term.selectAll();
         return false;
       }
+
+      // Ctrl+C (or Cmd+C) - Fallback Copy on selection, otherwise let SIGINT pass through to PTY
+      if (mod && !event.shiftKey && event.key.toLowerCase() === "c" && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection());
+        return false;
+      }
+
       return true;
     });
 
