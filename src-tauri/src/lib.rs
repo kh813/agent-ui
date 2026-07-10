@@ -17,8 +17,8 @@ pub fn run() {
         .manage(PtyState::default())
         // Tauri only builds this default Edit/Window/Help menu automatically on macOS;
         // set it explicitly so Windows and Linux also get a menu bar with Copy/Paste/etc.,
-        // plus a Theme submenu mirroring the in-app theme selector.
-        .menu(|handle| menu::build_menu(handle, &config::get_app_config(None).default_theme))
+        // plus Theme and Settings submenus mirroring in-app preferences.
+        .menu(|handle| menu::build_menu(handle, &config::get_app_config(None).default_theme, true))
         .on_menu_event(menu::handle_menu_event)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -37,7 +37,8 @@ pub fn run() {
             agent::check_skill_folder,
             agent::build_skill,
             config::get_app_config,
-            menu::set_theme
+            menu::set_theme,
+            menu::set_auto_check_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

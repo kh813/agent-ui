@@ -115,6 +115,23 @@ function App() {
     return saved !== "false"; // Default to true
   });
 
+  // Keep the native app menu's "Check for Updates on Startup" checkmark in sync
+  useEffect(() => {
+    localStorage.setItem("autoCheckUpdate", autoCheckUpdate.toString());
+    invoke("set_auto_check_update", { enabled: autoCheckUpdate }).catch(() => {});
+  }, [autoCheckUpdate]);
+
+  // Apply changes made from the native app menu
+  useEffect(() => {
+    const unsub = subscribeToTauriEvent(
+      listen<boolean>("auto-check-update-changed", (event) => {
+        setAutoCheckUpdate(event.payload);
+      })
+    );
+
+    return unsub;
+  }, []);
+
   const [isInstalling, setIsInstalling] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isInstallTerminalOpen, setIsInstallTerminalOpen] = useState(false);
@@ -469,53 +486,10 @@ function App() {
         {statusMessage || " "}
       </div>
 
-      {/* Main Body Layout with Sidebar and Panel */}
+      {/* Main Body Layout (sidebar removed - agent info lives in the header now,
+          and "check updates on startup" moved to the native app menu, so the
+          main panel can use the full width) */}
       <div className="app-body-layout">
-        {/* Sidebar panel */}
-        <aside className="sidebar">
-          <div className="sidebar-title">{t("aiEngines")}</div>
-
-          <div className="agent-list">
-            {appConfig?.engines.map((engine) => {
-              const status = agentStatuses[engine.id] || { installed: false, path: null, version: null };
-              return (
-                <div
-                  key={engine.id}
-                  className={`agent-item ${selectedAgentId === engine.id ? "active" : ""}`}
-                  onClick={() => setSelectedAgentId(engine.id)}
-                  title={engine.name}
-                >
-                  <div className="agent-name-row">
-                    <span className="agent-name">{engine.name}</span>
-                    <span className={`agent-badge ${status.installed ? "installed" : "not-installed"}`}>
-                      {status.installed ? t("installed") : t("missing")}
-                    </span>
-                  </div>
-                  <div className="agent-version">
-                    {status.installed ? status.version || t("versionLoaded") : t("requireSetup")}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Settings Section inside Sidebar */}
-          <div style={{ marginTop: "auto", borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "16px" }}>
-            <div className="sidebar-title" style={{ marginBottom: "8px" }}>{t("appSettings")}</div>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.8rem", color: "#94a3b8", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={autoCheckUpdate}
-                onChange={(e) => {
-                  setAutoCheckUpdate(e.target.checked);
-                  localStorage.setItem("autoCheckUpdate", e.target.checked.toString());
-                }}
-              />
-              {t("checkUpdatesStartup")}
-            </label>
-          </div>
-        </aside>
-
         {/* Main Panel View (live terminal OR Onboarding installer) */}
         {!currentAgentStatus.installed ? (
           /* Onboarding Panel */
