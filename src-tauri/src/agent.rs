@@ -54,28 +54,45 @@ pub struct UpdateStatus {
     pub update_available: bool,
 }
 
+// Embedded copy of resources/install_commands.json, used whenever the file
+// can't be found on disk (e.g. a standalone Windows .exe copied without its
+// resources directory). This guarantees the app has sane defaults even when
+// not installed via the bundled installer.
+const DEFAULT_INSTALL_COMMANDS: &str = include_str!("../resources/install_commands.json");
+
 // Load configurations from resource file, resolving via resource_dir in Tauri v2
 fn load_config<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<HashMap<String, AgentConfig>, String> {
     let resource_path = app
         .path()
         .resource_dir()
-        .map(|p| p.join("resources/install_commands.json"))
-        .map_err(|e| format!("Failed to get resource directory: {}", e))?;
+        .ok()
+        .map(|p| p.join("resources/install_commands.json"));
 
-    let path = if resource_path.exists() {
-        resource_path
-    } else {
-        // Fallback during cargo test execution
-        let test_path = PathBuf::from("resources/install_commands.json");
-        if test_path.exists() {
-            test_path
-        } else {
-            PathBuf::from("src-tauri/resources/install_commands.json")
-        }
+    let path = resource_path
+        .filter(|p| p.exists())
+        .or_else(|| {
+            // Fallback during cargo test execution
+            let test_path = PathBuf::from("resources/install_commands.json");
+            if test_path.exists() {
+                Some(test_path)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            let dev_path = PathBuf::from("src-tauri/resources/install_commands.json");
+            if dev_path.exists() {
+                Some(dev_path)
+            } else {
+                None
+            }
+        });
+
+    let content = match path {
+        Some(path) => fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read config from {:?}: {}", path, e))?,
+        None => DEFAULT_INSTALL_COMMANDS.to_string(),
     };
-
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read config from {:?}: {}", path, e))?;
 
     serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse JSON: {}", e))
