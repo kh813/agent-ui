@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import "@xterm/xterm/css/xterm.css";
 import { computeFitSize } from "../lib/terminalFit";
+import { registerWrappedUrlLinkProvider } from "../lib/wrappedUrlLinkProvider";
 import { TerminalTheme } from "../utils/themes";
 
 interface TerminalViewProps {
@@ -31,9 +31,13 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
       allowProposedApi: true,
     });
 
-    term.loadAddon(new WebLinksAddon((_event, uri) => {
+    // Custom link provider instead of the stock WebLinksAddon: it also
+    // detects URLs wrapped by the underlying CLI itself (via cursor
+    // positioning rather than terminal auto-wrap), which the stock addon
+    // misses since it only follows xterm's own `isWrapped` flag.
+    const linkProvider = registerWrappedUrlLinkProvider(term, (_event, uri) => {
       openUrl(uri);
-    }));
+    });
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
 
@@ -148,6 +152,7 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
 
     return () => {
       dataListener.dispose();
+      linkProvider.dispose();
       resizeObserver.disconnect();
       if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
       term.dispose();
