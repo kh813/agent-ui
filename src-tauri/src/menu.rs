@@ -3,6 +3,7 @@ use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, Submenu, HELP_SUBM
 use tauri::{AppHandle, Emitter, Manager};
 
 const THEME_MENU_ID_PREFIX: &str = "theme:";
+const AUTO_CHECK_UPDATE_MENU_ID: &str = "settings:auto-check-update";
 
 // Keep in sync with the theme ids/names in src/utils/themes.ts
 const THEMES: &[(&str, &str)] = &[
@@ -15,11 +16,16 @@ const THEMES: &[(&str, &str)] = &[
 ];
 
 struct ThemeMenuState(Mutex<Vec<(String, CheckMenuItem<tauri::Wry>)>>);
+struct AutoCheckUpdateMenuState(CheckMenuItem<tauri::Wry>);
 
 // Tauri only builds its default Edit/Window/Help menu automatically on macOS,
 // so build it explicitly (Windows/Linux get a menu bar too) and add a Theme
 // submenu that mirrors the in-app theme selector.
-pub fn build_menu(handle: &AppHandle, initial_theme: &str) -> tauri::Result<Menu<tauri::Wry>> {
+pub fn build_menu(
+    handle: &AppHandle,
+    initial_theme: &str,
+    initial_auto_check_update: bool,
+) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::default(handle)?;
 
     let items: Vec<(String, CheckMenuItem<tauri::Wry>)> = THEMES
@@ -41,14 +47,30 @@ pub fn build_menu(handle: &AppHandle, initial_theme: &str) -> tauri::Result<Menu
         items.iter().map(|(_, item)| item as &dyn IsMenuItem<tauri::Wry>).collect();
     let theme_submenu = Submenu::with_items(handle, "Theme", true, &theme_submenu_items)?;
 
-    // Place Theme just before Help, matching where most apps put extra top-level menus.
+    let auto_check_update_item = CheckMenuItem::with_id(
+        handle,
+        AUTO_CHECK_UPDATE_MENU_ID,
+        "Check for Updates on Startup",
+        true,
+        initial_auto_check_update,
+        None::<&str>,
+    )?;
+    let settings_submenu = Submenu::with_items(handle, "Settings", true, &[&auto_check_update_item])?;
+
+    // Place Theme/Settings just before Help, matching where most apps put extra top-level menus.
     let help_index = menu.items()?.iter().position(|item| item.id() == HELP_SUBMENU_ID);
     match help_index {
         Some(index) => menu.insert(&theme_submenu, index)?,
         None => menu.append(&theme_submenu)?,
     }
+    let help_index = menu.items()?.iter().position(|item| item.id() == HELP_SUBMENU_ID);
+    match help_index {
+        Some(index) => menu.insert(&settings_submenu, index)?,
+        None => menu.append(&settings_submenu)?,
+    }
 
     handle.manage(ThemeMenuState(Mutex::new(items)));
+    handle.manage(AutoCheckUpdateMenuState(auto_check_update_item));
 
     Ok(menu)
 }
@@ -62,13 +84,30 @@ fn set_checked_theme(app: &AppHandle, theme_id: &str) {
     }
 }
 
-pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
-    let Some(theme_id) = event.id().as_ref().strip_prefix(THEME_MENU_ID_PREFIX) else {
-        return;
-    };
+fn set_checked_auto_update(app: &AppHandle, enabled: bool) {
+    if let Some(state) = app.try_state::<AutoCheckUpdateMenuState>() {
+        let _ = state.0.set_checked(enabled);
+    }
+}
 
-    set_checked_theme(app, theme_id);
-    let _ = app.emit("theme-changed", theme_id.to_string());
+pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
+    let id = event.id().as_ref();
+
+    if let Some(theme_id) = id.strip_prefix(THEME_MENU_ID_PREFIX) {
+        set_checked_theme(app, theme_id);
+        let _ = app.emit("theme-changed", theme_id.to_string());
+        return;
+    }
+
+    if id == AUTO_CHECK_UPDATE_MENU_ID {
+        if let Some(state) = app.try_state::<AutoCheckUpdateMenuState>() {
+            // muda already flips the checkmark before dispatching this event
+            // (see its Windows/macOS menu_selected handlers), so the current
+            // checked state already reflects the click - just read and relay it.
+            let enabled = state.0.is_checked().unwrap_or(true);
+            let _ = app.emit("auto-check-update-changed", enabled);
+        }
+    }
 }
 
 // Invoked by the frontend when the theme changes via the in-app selector,
@@ -76,4 +115,11 @@ pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
 #[tauri::command]
 pub fn set_theme(app: AppHandle, theme_id: String) {
     set_checked_theme(&app, &theme_id);
+}
+
+// Invoked by the frontend on load (and whenever the setting changes some
+// other way) so the menu checkmark stays in sync.
+#[tauri::command]
+pub fn set_auto_check_update(app: AppHandle, enabled: bool) {
+    set_checked_auto_update(&app, enabled);
 }
