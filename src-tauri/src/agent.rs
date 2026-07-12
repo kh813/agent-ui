@@ -115,6 +115,14 @@ fn resolve_env_path(path_str: &str) -> PathBuf {
     PathBuf::from(resolved)
 }
 
+// Reject anything that doesn't look like a short version string (e.g. an
+// HTML page returned by a misbehaving/redirected endpoint instead of plain text).
+fn looks_like_version(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 32
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || ".-_+".contains(c))
+}
+
 // Best-effort fetch of latest version from web via OS-specific CLI tools
 fn fetch_latest_version_from_web() -> Option<String> {
     let is_windows = cfg!(target_os = "windows");
@@ -133,7 +141,7 @@ fn fetch_latest_version_from_web() -> Option<String> {
     if let Ok(out) = output {
         if out.status.success() {
             let ver = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !ver.is_empty() {
+            if looks_like_version(&ver) {
                 return Some(ver);
             }
         }
