@@ -43,7 +43,7 @@ export const themes: Record<string, ThemeConfig> = {
       blue: "#2563eb",
       magenta: "#9333ea",
       cyan: "#0891b2",
-      white: "#cbd5e1",
+      white: "#64748b", // Slate-500 for readable dim/secondary text on light backgrounds
       brightBlack: "#1e293b", // Dark navy for high contrast on light backgrounds
       brightRed: "#ef4444",
       brightGreen: "#22c55e",
