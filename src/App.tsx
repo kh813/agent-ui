@@ -29,6 +29,9 @@ interface AppConfig {
   font_family: string;
   font_size: number;
   engines: EngineConfig[];
+  pre_launch_command?: string | null;
+  pre_launch_args?: string[];
+  pre_launch_required?: boolean;
 }
 
 
@@ -188,6 +191,9 @@ function App() {
     initialCwd: "",
     onRawOutput: handleRawOutput,
     getTerminalSize,
+    preLaunchCommand: appConfig?.pre_launch_command ?? undefined,
+    preLaunchArgs: appConfig?.pre_launch_args,
+    preLaunchRequired: appConfig?.pre_launch_required,
   });
 
   // Detect installer CLI path and version for all configured engines

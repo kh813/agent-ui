@@ -395,6 +395,65 @@ pub async fn build_skill_internal<R: tauri::Runtime>(
     }
 }
 
+// --- Generic pre-launch command (config.AppConfig.pre_launch_command) ---
+//
+// Runs an arbitrary configured command in the selected working directory
+// before a PTY session starts, so a parent project (e.g. one bundling this
+// app as its GUI shell) can run its own setup/update/auth checks first. This
+// generalizes the skill-folder-specific check_skill_folder/build_skill flow
+// above for projects that need more than "rebuild a skill folder".
+//
+// Runs via Command::output() (blocking, no live streaming) rather than the
+// PTY session machinery in pty.rs: the PTY exit path only ever emits
+// "terminated"/"error" with no exit code (see pty.rs's read loop), which
+// isn't enough to implement pre_launch_required's block-on-failure
+// semantics. A future version could stream progress through the PTY instead
+// if the blocking wait proves too opaque for slow first-run setups.
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PreLaunchResult {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[tauri::command]
+pub async fn run_pre_launch_command(
+    cwd: String,
+    command: String,
+    args: Vec<String>,
+) -> Result<PreLaunchResult, String> {
+    run_pre_launch_command_internal(cwd, command, args)
+}
+
+fn run_pre_launch_command_internal(
+    cwd: String,
+    command: String,
+    args: Vec<String>,
+) -> Result<PreLaunchResult, String> {
+    if command.is_empty() {
+        return Err("pre_launch_command is empty".to_string());
+    }
+
+    let mut cmd = std::process::Command::new(&command);
+    cmd.args(&args);
+    if !cwd.is_empty() {
+        cmd.current_dir(&cwd);
+    }
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute pre-launch command '{}': {}", command, e))?;
+
+    Ok(PreLaunchResult {
+        success: output.status.success(),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,8 +511,74 @@ mod tests {
 
         let status = check_agent_update_internal("agy".to_string(), app.handle().clone()).await;
         assert!(status.is_ok());
-        
+
         let s = status.unwrap();
         println!("Mock update result for agy: {:?}", s);
+    }
+
+    #[test]
+    fn test_run_pre_launch_command_success() {
+        let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c", "exit 0"])
+        } else {
+            ("sh", vec!["-c", "exit 0"])
+        };
+        let result = run_pre_launch_command_internal(
+            String::new(),
+            cmd.to_string(),
+            args.into_iter().map(String::from).collect(),
+        )
+        .unwrap();
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_run_pre_launch_command_failure_surfaces_nonzero_exit() {
+        let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c", "exit 1"])
+        } else {
+            ("sh", vec!["-c", "exit 1"])
+        };
+        let result = run_pre_launch_command_internal(
+            String::new(),
+            cmd.to_string(),
+            args.into_iter().map(String::from).collect(),
+        )
+        .unwrap();
+        assert!(!result.success);
+    }
+
+    #[test]
+    fn test_run_pre_launch_command_empty_command_is_error() {
+        let result = run_pre_launch_command_internal(String::new(), String::new(), vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_pre_launch_command_uses_cwd() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "agent_ui_prelaunch_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        std::fs::write(temp_dir.join("marker.txt"), "hi").unwrap();
+
+        let (cmd, args): (&str, Vec<String>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c".to_string(), "if exist marker.txt (exit 0) else (exit 1)".to_string()])
+        } else {
+            ("sh", vec!["-c".to_string(), "test -f marker.txt".to_string()])
+        };
+        let result = run_pre_launch_command_internal(
+            temp_dir.to_string_lossy().to_string(),
+            cmd.to_string(),
+            args,
+        )
+        .unwrap();
+        assert!(result.success, "command should find marker.txt in the given cwd");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

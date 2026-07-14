@@ -11,6 +11,12 @@ export interface PtyPrompt {
   url?: string;
 }
 
+interface PreLaunchResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+}
+
 export interface UseChatSessionOptions {
   command: string;
   defaultArgs?: string[];
@@ -20,6 +26,12 @@ export interface UseChatSessionOptions {
   // the right size from the start, rather than a guessed default that agy's
   // cursor-relative redraws could then target incorrectly.
   getTerminalSize?: () => { rows: number; cols: number } | undefined;
+  // Config-driven command run before every session start (AppConfig.
+  // pre_launch_command). Takes priority over the skill-folder auto-rebuild
+  // fallback below when set.
+  preLaunchCommand?: string;
+  preLaunchArgs?: string[];
+  preLaunchRequired?: boolean;
 }
 
 export function useChatSession({
@@ -28,6 +40,9 @@ export function useChatSession({
   initialCwd = "",
   onRawOutput,
   getTerminalSize,
+  preLaunchCommand,
+  preLaunchArgs = [],
+  preLaunchRequired = true,
 }: UseChatSessionOptions) {
   const [cwd, setCwd] = useState(initialCwd);
   const [status, setStatus] = useState<"idle" | "running" | "error">("idle");
@@ -70,31 +85,92 @@ export function useChatSession({
       );
 
       try {
-        // Task 9-5 & 9-6: Check and auto-rebuild skill folder if exists
-        const hasSkill = await invoke<boolean>("check_skill_folder", { cwd: targetCwd || "" });
-        if (hasSkill) {
+        if (preLaunchCommand) {
+          // Config-driven pre-launch check (AppConfig.pre_launch_command),
+          // e.g. a parent project's own setup/update/auth checks.
           showStatusMessage(
-            isJa
-              ? "🛠️ skill フォルダを検出しました。セッション開始前にスキルをリビルドしています..."
-              : "🛠️ Skill folder detected. Rebuilding skill before starting session...",
+            isJa ? "起動前処理を実行しています..." : "Running pre-launch checks...",
             false
           );
 
           try {
-            await invoke<string>("build_skill", {
+            const result = await invoke<PreLaunchResult>("run_pre_launch_command", {
               cwd: targetCwd || "",
-              agentId: "agy",
+              command: preLaunchCommand,
+              args: preLaunchArgs,
             });
-            showStatusMessage(
-              isJa ? "✓ スキルのリビルドが成功しました！" : "✓ Skill rebuild succeeded!"
-            );
-          } catch (buildErr: any) {
+
+            if (!result.success) {
+              const detail = (result.stderr || result.stdout).trim();
+              if (preLaunchRequired) {
+                setStatus("error");
+                showStatusMessage(
+                  isJa
+                    ? `起動前処理に失敗しました。セッションを開始できません。\n${detail}`
+                    : `Pre-launch check failed. Session was not started.\n${detail}`,
+                  false
+                );
+                return;
+              }
+              showStatusMessage(
+                isJa
+                  ? `⚠️ 起動前処理に失敗しましたが、セッションをそのまま開始します。\n${detail}`
+                  : `⚠️ Pre-launch check failed. Starting session anyway.\n${detail}`,
+                false
+              );
+            } else {
+              showStatusMessage(
+                isJa ? "✓ 起動前処理が完了しました" : "✓ Pre-launch checks complete"
+              );
+            }
+          } catch (preLaunchErr: any) {
+            // invoke() itself rejected (e.g. the configured command doesn't
+            // exist at all) — treat the same as a failed check.
+            if (preLaunchRequired) {
+              setStatus("error");
+              showStatusMessage(
+                isJa
+                  ? `起動前処理を実行できませんでした。セッションを開始できません。\n${preLaunchErr.toString()}`
+                  : `Failed to run pre-launch command. Session was not started.\n${preLaunchErr.toString()}`,
+                false
+              );
+              return;
+            }
             showStatusMessage(
               isJa
-                ? `⚠️ スキルのリビルドに失敗しました。セッションをそのまま開始します。\n${buildErr.toString()}`
-                : `⚠️ Skill rebuild failed. Starting session anyway.\n${buildErr.toString()}`,
+                ? `⚠️ 起動前処理を実行できませんでした。セッションをそのまま開始します。\n${preLaunchErr.toString()}`
+                : `⚠️ Failed to run pre-launch command. Starting session anyway.\n${preLaunchErr.toString()}`,
               false
             );
+          }
+        } else {
+          // Fallback (Task 9-5 & 9-6): check and auto-rebuild a `skill` folder
+          // if no pre_launch_command is configured for this project.
+          const hasSkill = await invoke<boolean>("check_skill_folder", { cwd: targetCwd || "" });
+          if (hasSkill) {
+            showStatusMessage(
+              isJa
+                ? "🛠️ skill フォルダを検出しました。セッション開始前にスキルをリビルドしています..."
+                : "🛠️ Skill folder detected. Rebuilding skill before starting session...",
+              false
+            );
+
+            try {
+              await invoke<string>("build_skill", {
+                cwd: targetCwd || "",
+                agentId: "agy",
+              });
+              showStatusMessage(
+                isJa ? "✓ スキルのリビルドが成功しました！" : "✓ Skill rebuild succeeded!"
+              );
+            } catch (buildErr: any) {
+              showStatusMessage(
+                isJa
+                  ? `⚠️ スキルのリビルドに失敗しました。セッションをそのまま開始します。\n${buildErr.toString()}`
+                  : `⚠️ Skill rebuild failed. Starting session anyway.\n${buildErr.toString()}`,
+                false
+              );
+            }
           }
         }
 
@@ -118,7 +194,7 @@ export function useChatSession({
         );
       }
     },
-    [command, defaultArgs, showStatusMessage, getTerminalSize]
+    [command, defaultArgs, showStatusMessage, getTerminalSize, preLaunchCommand, preLaunchArgs, preLaunchRequired]
   );
 
   // Stop PTY Session

@@ -12,6 +12,10 @@ pub struct EngineConfig {
     pub args: Vec<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
     pub app_name: String,
@@ -19,6 +23,22 @@ pub struct AppConfig {
     pub font_family: String,
     pub font_size: u32,
     pub engines: Vec<EngineConfig>,
+    // Optional command run (in the selected working directory) before every
+    // PTY session starts, e.g. a parent project's own setup/update/auth
+    // checks. Generalizes the old hardcoded "skill folder -> `<engine> build`"
+    // flow (see agent::check_skill_folder / agent::build_skill), which still
+    // runs as a fallback when this is unset, so existing configs without
+    // these fields keep working unchanged.
+    #[serde(default)]
+    pub pre_launch_command: Option<String>,
+    #[serde(default)]
+    pub pre_launch_args: Vec<String>,
+    // When true (default), a failing pre_launch_command aborts the session
+    // start and surfaces the error. When false, the failure is shown as a
+    // warning but the session starts anyway (for best-effort checks, e.g. a
+    // version check that shouldn't block launch on a flaky network).
+    #[serde(default = "default_true")]
+    pub pre_launch_required: bool,
 }
 
 impl Default for AppConfig {
@@ -34,6 +54,9 @@ impl Default for AppConfig {
                 command: "agy".to_string(),
                 args: vec![],
             }],
+            pre_launch_command: None,
+            pre_launch_args: vec![],
+            pre_launch_required: true,
         }
     }
 }
@@ -140,6 +163,46 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_pre_launch_fields_default_when_absent() {
+        // Existing configs (like the ones above) that predate pre_launch_*
+        // must keep parsing, with pre_launch_command absent and
+        // pre_launch_required defaulting to true.
+        let config: AppConfig = serde_json::from_str(
+            r#"{
+                "app_name": "No Pre-Launch Fields",
+                "default_theme": "light",
+                "font_family": "Menlo",
+                "font_size": 13,
+                "engines": []
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(config.pre_launch_command, None);
+        assert!(config.pre_launch_args.is_empty());
+        assert_eq!(config.pre_launch_required, true);
+    }
+
+    #[test]
+    fn test_pre_launch_fields_parsed_when_present() {
+        let config: AppConfig = serde_json::from_str(
+            r#"{
+                "app_name": "With Pre-Launch",
+                "default_theme": "light",
+                "font_family": "Menlo",
+                "font_size": 13,
+                "engines": [],
+                "pre_launch_command": "bash",
+                "pre_launch_args": ["preflight.sh"],
+                "pre_launch_required": false
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(config.pre_launch_command, Some("bash".to_string()));
+        assert_eq!(config.pre_launch_args, vec!["preflight.sh".to_string()]);
+        assert_eq!(config.pre_launch_required, false);
     }
 
     fn uuid_like_timestamp() -> u128 {
