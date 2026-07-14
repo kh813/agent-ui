@@ -29,6 +29,13 @@ export function TerminalView({ onData, terminalRef, onResize, theme, fontFamily,
       fontSize: fontSize || 13,
       fontFamily: fontFamily || "Menlo, Monaco, 'Courier New', monospace",
       allowProposedApi: true,
+      // CLIs (e.g. Charm/lipgloss-based agents) often emit explicit 24-bit
+      // truecolor grays for dim/secondary text, assuming a dark terminal
+      // background. That bypasses the 16-color theme palette entirely, so
+      // on light themes those grays can end up nearly invisible. This
+      // forces xterm to adjust any foreground color to meet WCAG AA
+      // contrast against the actual background, regardless of theme.
+      minimumContrastRatio: 4.5,
     });
 
     // Custom link provider instead of the stock WebLinksAddon: it also
