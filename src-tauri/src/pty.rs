@@ -304,6 +304,26 @@ pub async fn start_pty_internal<R: tauri::Runtime>(
     cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.env("PYTHONUTF8", "1");
 
+    // Add local bin directories to PATH so that command-line tools like marp or agy
+    // are directly accessible inside the PTY shell.
+    let mut path_env = std::env::var("PATH").unwrap_or_default();
+    let mut local_paths = Vec::new();
+    if let Ok(exe_path) = std::env::current_exe() {
+        let exe_dir = resolve_app_bundle_dir(exe_path.clone());
+        let proj_dir = resolve_project_root(exe_path);
+        local_paths.push(exe_dir.join("bin"));
+        local_paths.push(proj_dir.join("bin"));
+        local_paths.push(proj_dir.join("app").join("bin"));
+    }
+    let path_sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+    for local_path in local_paths {
+        let path_str = local_path.to_string_lossy().to_string();
+        if !path_env.contains(&path_str) {
+            path_env = format!("{}{}{}", path_str, path_sep, path_env);
+        }
+    }
+    cmd.env("PATH", path_env);
+
     if let Some(cwd_path) = cwd {
         if !cwd_path.is_empty() {
             cmd.cwd(PathBuf::from(cwd_path));
@@ -692,7 +712,7 @@ mod tests {
         #[cfg(not(target_os = "windows"))]
         let args = vec![
             "-c".to_string(),
-            "echo TERM=$TERM; echo COLORTERM=$COLORTERM; echo PYTHONIOENCODING=$PYTHONIOENCODING".to_string(),
+            "echo TERM=$TERM; echo COLORTERM=$COLORTERM; echo PYTHONIOENCODING=$PYTHONIOENCODING; echo PATH=$PATH".to_string(),
         ];
 
         #[cfg(target_os = "windows")]
@@ -700,7 +720,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         let args = vec![
             "-Command".to_string(),
-            "Write-Output \"TERM=$env:TERM\"; Write-Output \"COLORTERM=$env:COLORTERM\"; Write-Output \"PYTHONIOENCODING=$env:PYTHONIOENCODING\"".to_string(),
+            "Write-Output \"TERM=$env:TERM\"; Write-Output \"COLORTERM=$env:COLORTERM\"; Write-Output \"PYTHONIOENCODING=$env:PYTHONIOENCODING\"; Write-Output \"PATH=$env:PATH\"".to_string(),
         ];
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(10);
@@ -746,6 +766,7 @@ mod tests {
         assert!(received.contains("TERM=xterm-256color"));
         assert!(received.contains("COLORTERM=truecolor"));
         assert!(received.contains("PYTHONIOENCODING=utf-8"));
+        assert!(received.contains("PATH="));
         
         let stop_res = stop_pty_internal(&state).await;
         assert!(stop_res.is_ok());
