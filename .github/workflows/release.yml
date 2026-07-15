@@ -46,8 +46,10 @@ jobs:
       - name: run python test suite
         if: matrix.platform == 'macos-latest'
         run: |
-          pip install pytest
-          pytest python/tests/ -v
+          python3 -m venv .ci-test-venv
+          .ci-test-venv/bin/pip install -q --upgrade pip
+          .ci-test-venv/bin/pip install -q pytest
+          .ci-test-venv/bin/pytest python/tests/ -v
 
       - name: build tauri app
         run: npm run tauri build -- ${{ matrix.args }}
