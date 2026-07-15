@@ -436,6 +436,35 @@ pub struct PreLaunchOutputPayload {
     pub data: Vec<u8>,
 }
 
+// Since start_pre_launch_command_internal reads plain piped stdio (not a
+// real PTY — see the comment above on why), the child's bare "\n" line
+// endings reach us as-is: no kernel tty line discipline (ONLCR) is there to
+// translate them to "\r\n" the way it transparently does for pty.rs's real
+// PTY session. The frontend feeds both output streams into the same
+// xterm.js instance, which — like any real terminal — only resets the
+// cursor column on "\r"; a bare "\n" just moves down a row, producing a
+// diagonal/staircase misalignment across multi-line output (observed with
+// preflight.sh's Japanese-language setup prompts). Insert the missing "\r"
+// ourselves. `last_was_cr` carries state across chunk boundaries so a "\r"
+// that ends one 1024-byte read and the "\n" that begins the next aren't
+// double-translated into "\r\r\n".
+fn normalize_lf_to_crlf(buf: &[u8], last_was_cr: &mut bool) -> Vec<u8> {
+    let mut out = Vec::with_capacity(buf.len());
+    for (i, &b) in buf.iter().enumerate() {
+        if b == b'\n' {
+            let prev_was_cr = if i == 0 { *last_was_cr } else { buf[i - 1] == b'\r' };
+            if !prev_was_cr {
+                out.push(b'\r');
+            }
+        }
+        out.push(b);
+    }
+    if let Some(&last) = buf.last() {
+        *last_was_cr = last == b'\r';
+    }
+    out
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct PreLaunchStatusPayload {
     pub success: bool,
@@ -499,13 +528,15 @@ fn start_pre_launch_command_internal<R: tauri::Runtime>(
         thread::spawn(move || {
             let mut reader = pipe;
             let mut buf = [0u8; 1024];
+            let mut last_was_cr = false;
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
+                        let data = normalize_lf_to_crlf(&buf[..n], &mut last_was_cr);
                         let _ = app_clone.emit(
                             "pre-launch-output",
-                            PreLaunchOutputPayload { data: buf[..n].to_vec() },
+                            PreLaunchOutputPayload { data },
                         );
                     }
                 }
@@ -677,6 +708,64 @@ mod tests {
         let app = mock_app();
         let result = start_pre_launch_command_internal(app.handle().clone(), String::new(), String::new(), vec![]);
         assert!(result.is_err());
+    }
+
+    // Regression test for the "column staircase" bug (2026-07-15): piped
+    // child stdout carries bare "\n" with no kernel tty layer to add the "\r"
+    // xterm.js needs to reset the cursor column, so multi-line output (e.g.
+    // preflight.sh's setup prompts) rendered progressively further right on
+    // each line instead of starting at column 0.
+    #[test]
+    fn test_normalize_lf_to_crlf_inserts_missing_cr() {
+        let mut last_was_cr = false;
+        let out = normalize_lf_to_crlf(b"line one\nline two\n", &mut last_was_cr);
+        assert_eq!(out, b"line one\r\nline two\r\n");
+    }
+
+    #[test]
+    fn test_normalize_lf_to_crlf_leaves_existing_crlf_untouched() {
+        let mut last_was_cr = false;
+        let out = normalize_lf_to_crlf(b"already\r\ncrlf\r\n", &mut last_was_cr);
+        assert_eq!(out, b"already\r\ncrlf\r\n");
+    }
+
+    #[test]
+    fn test_normalize_lf_to_crlf_handles_cr_split_across_chunks() {
+        // A "\r" landing on the last byte of one 1024-byte read and the "\n"
+        // that completes it arriving at the start of the next read must not
+        // be double-translated into "\r\r\n".
+        let mut last_was_cr = false;
+        let first = normalize_lf_to_crlf(b"partial\r", &mut last_was_cr);
+        assert_eq!(first, b"partial\r");
+        assert!(last_was_cr);
+
+        let second = normalize_lf_to_crlf(b"\nrest", &mut last_was_cr);
+        assert_eq!(second, b"\nrest");
+    }
+
+    #[tokio::test]
+    async fn test_start_pre_launch_command_multiline_output_uses_crlf() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
+        let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c", "echo line-one&echo line-two"])
+        } else {
+            ("printf", vec!["line-one\\nline-two\\n"])
+        };
+        let (_success, output) = run_and_collect(
+            &handle,
+            String::new(),
+            cmd.to_string(),
+            args.into_iter().map(String::from).collect(),
+        )
+        .await;
+        assert!(
+            output.contains("line-one\r\nline-two"),
+            "expected CRLF-separated lines, got: {:?}",
+            output
+        );
     }
 
     #[tokio::test]
