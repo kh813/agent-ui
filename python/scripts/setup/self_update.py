@@ -114,16 +114,16 @@ def apply() -> None:
                 f"Downloaded archive from {url} did not contain {upstream_name}"
             )
 
-        if sys.platform != "win32":
-            subprocess.run(["xattr", "-cr", str(new_dest)], check=False, stdin=subprocess.DEVNULL)
-            (new_dest / "Contents" / "MacOS" / "agent-ui").chmod(0o755)
-
         if dest.exists():
             if dest.is_dir():
                 shutil.rmtree(dest)
             else:
                 dest.unlink()
         shutil.move(str(new_dest), str(dest))
+
+        if sys.platform != "win32":
+            subprocess.run(["xattr", "-cr", str(dest)], check=False, stdin=subprocess.DEVNULL)
+            (dest / "Contents" / "MacOS" / "agent-ui").chmod(0o755)
 
     _marker_path().write_text(latest_tag)
     print(f"  agent-ui {latest_tag} installed to {dest}.")
