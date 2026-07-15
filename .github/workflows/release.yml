@@ -37,6 +37,18 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      - name: setup python
+        if: matrix.platform == 'macos-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: run python test suite
+        if: matrix.platform == 'macos-latest'
+        run: |
+          pip install pytest
+          pytest python/tests/ -v
+
       - name: build tauri app
         run: npm run tauri build -- ${{ matrix.args }}
 
@@ -45,12 +57,14 @@ jobs:
         run: |
           cd src-tauri/target/aarch64-apple-darwin/release/bundle/macos
           ditto -c -k --sequesterRsrc --keepParent agent-ui.app ${{ github.workspace }}/agent-ui-mac.zip
+          cd ${{ github.workspace }}
+          zip -r agent-ui-mac.zip python config agent_config.json preflight.sh
 
       - name: package Windows exe to zip
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path src-tauri/target/release/agent-ui.exe -DestinationPath agent-ui-win.zip
+          Compress-Archive -Path src-tauri/target/release/agent-ui.exe,python,config,agent_config.json,preflight.bat -DestinationPath agent-ui-win.zip
 
       - name: upload release asset
         uses: softprops/action-gh-release@v2

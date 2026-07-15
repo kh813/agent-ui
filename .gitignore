@@ -37,3 +37,38 @@ yarn-error.log*
 /src-tauri/target/
 /src-tauri/binaries/
 /src-tauri/gen/
+
+# Python (bundled skills + automation code)
+/venv/
+__pycache__/
+*.pyc
+*.pyo
+python/**/__pycache__/
+/skills/*.skill
+python/scripts/automation/logs/
+python/scripts/automation/ChromeUserData/
+python/scripts/automation/scheduled/
+
+# Personal skill layer — per-installation, never committed
+python/skills-personal/*
+!python/skills-personal/.gitkeep
+
+# Generated cache (rebuilt by skills_catalog.py)
+python/skills/skill-catalog/catalog-index.md
+
+# Private configuration (template stays tracked)
+/config.toml
+
+# Self-updater / release-bundling artifacts written at the project root
+/agent-ui.app
+/agent-ui.app.version
+/agent-ui.exe
+/agent-ui.exe.version
+
+# Runtime artifacts created by setup.py at first launch
+/app/bin/
+/templates/*.pptx
+/.gemini/
+/files/*
+!/files/.gitkeep
+/tmp/

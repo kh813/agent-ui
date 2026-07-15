@@ -1,0 +1,174 @@
+# ── File protection: deny writes to protected project paths ──────────────
+# Priority 200 > allow rules (100) so these always win.
+
+[[rule]]
+description = "Deny write_file to python/"
+toolName = "write_file"
+argsPattern = '"path"\\s*:\\s*"[^"]*python/'
+decision = "deny"
+denyMessage = "python/ への直接書き込みは禁止されています。ファイルの受け渡しは files/ または tmp/ のみ使用できます。 / Direct writes to python/ are not allowed. Use files/ or tmp/ for data exchange."
+priority = 200
+
+[[rule]]
+description = "Deny replace (in-place edits) to python/"
+toolName = "replace"
+argsPattern = '"path"\\s*:\\s*"[^"]*python/'
+decision = "deny"
+denyMessage = "python/ への直接書き込みは禁止されています。 / Direct writes to python/ are not allowed."
+priority = 200
+
+[[rule]]
+description = "Deny shell redirection writes to python/"
+toolName = "run_shell_command"
+argsPattern = ">\\s*[\"']?[^\"']*python/"
+decision = "deny"
+denyMessage = "python/ へのシェルリダイレクトによる書き込みは禁止されています。 / Shell redirection writes to python/ are not allowed."
+priority = 200
+
+[[rule]]
+description = "Deny cp/mv writes to python/"
+toolName = "run_shell_command"
+argsPattern = '(?:cp|mv)[^\n]+\s+python/'
+decision = "deny"
+denyMessage = "python/ へのコピー・移動は禁止されています。 / Copying or moving files to python/ are not allowed."
+priority = 200
+
+# ── External filesystem protection ───────────────────────────────────────
+# Priority 250 is in workspace tier → effective 3.250, overrides YOLO allow-all (1.998).
+#
+# Pattern notes:
+#  - File tool rules use TOML literal strings (single-quoted) to avoid TOML escape ambiguity.
+#    Patterns match substrings of the raw JSON args (e.g. '"/etc/' matches {"path":"/etc/hosts"}).
+#    The leading '"' anchors to the opening quote of the path value, preventing false matches
+#    on deeper paths like "/Users/alice/Applications/..." (whose quote precedes "/Users/").
+#  - Shell command rules use TOML basic strings (double-quoted) for the '\s' / '\n' sequences
+#    needed in those patterns.
+
+# --- Write protection: Mac/Linux system directories ---
+
+[[rule]]
+description = "Deny writes to Mac/Linux system directories"
+toolName = ["write_file", "replace"]
+argsPattern = '"/(?:etc|usr|bin|sbin|opt|System|Library|private|var|dev|Applications)/'
+decision = "deny"
+denyMessage = "システムディレクトリへの書き込みは禁止されています。 / Writes to system directories are not allowed."
+priority = 250
+
+# --- Write protection: Windows system directories ---
+
+[[rule]]
+description = "Deny writes to Windows system directories"
+toolName = ["write_file", "replace"]
+argsPattern = '"[A-Za-z]:/(?:Windows|Program Files|ProgramData|System32|SysWOW64)/'
+decision = "deny"
+denyMessage = "Windowsシステムディレクトリへの書き込みは禁止されています。 / Writes to Windows system directories are not allowed."
+priority = 250
+
+# --- Read+write protection: credential/config dotfiles in home directory ---
+
+[[rule]]
+description = "Deny read/write access to credential and config dotfiles"
+toolName = ["write_file", "replace", "read_file"]
+argsPattern = '/\.(?:ssh|aws|netrc|npmrc|pypirc|gitconfig|gemini|anthropic|openai|env|envrc|bashrc|bash_profile|zshrc|zprofile|profile|gnupg|kube|vault|terraform|config)(?:/|")'
+decision = "deny"
+denyMessage = "認証情報・設定ファイルへのアクセスは禁止されています。 / Access to credential and config files is not allowed."
+priority = 250
+
+# --- Read+write protection: Windows AppData ---
+
+[[rule]]
+description = "Deny access to Windows AppData directory"
+toolName = ["write_file", "replace", "read_file"]
+argsPattern = '/AppData/'
+decision = "deny"
+denyMessage = "AppDataディレクトリへのアクセスは禁止されています。 / Access to Windows AppData directory is not allowed."
+priority = 250
+
+# --- Read+write protection: Mac user Library directory ---
+
+[[rule]]
+description = "Deny file access to Mac user Library directory"
+toolName = ["write_file", "replace", "read_file"]
+argsPattern = '/[Uu]sers/[^/]+/Library/'
+decision = "deny"
+denyMessage = "ユーザーライブラリへのアクセスは禁止されています。 / Access to user Library directory is not allowed."
+priority = 250
+
+# --- Shell command protection: system directories ---
+# Requires a word-boundary character before the path to avoid matching user paths
+# like ~/Applications/ (where '~' precedes '/Applications/', not a boundary char).
+
+[[rule]]
+description = "Deny shell access to Mac/Linux system directories"
+toolName = "run_shell_command"
+argsPattern = "[ \"';|&(]/(?:etc|usr|bin|sbin|opt|System|private|var|dev|Applications)/"
+decision = "deny"
+denyMessage = "システムディレクトリへのシェル操作は禁止されています。 / Shell access to system directories is not allowed."
+priority = 250
+
+# --- Shell command protection: credential/config dotfiles ---
+
+[[rule]]
+description = "Deny shell access to credential and config dotfiles"
+toolName = "run_shell_command"
+argsPattern = '(?:~/|/[Uu]sers/[^/]+/|%USERPROFILE%[/\\])\.(?:ssh|aws|netrc|npmrc|pypirc|gitconfig|gemini|anthropic|openai|env|envrc|bashrc|bash_profile|zshrc|zprofile|profile|gnupg|kube|vault|terraform|config)(?:[/\\"\s]|$)'
+decision = "deny"
+denyMessage = "ホームディレクトリの設定ファイルへのシェルアクセスは禁止されています。 / Shell access to home directory config files is not allowed."
+priority = 250
+
+# --- Shell command protection: Mac user Library directory ---
+
+[[rule]]
+description = "Deny shell access to Mac user Library directory"
+toolName = "run_shell_command"
+argsPattern = '(?:~/Library/|/[Uu]sers/[^/]+/Library/)'
+decision = "deny"
+denyMessage = "ユーザーライブラリへのシェルアクセスは禁止されています。 / Shell access to user Library directory is not allowed."
+priority = 250
+
+# --- Shell command protection: Windows AppData ---
+
+[[rule]]
+description = "Deny shell access to Windows AppData directory"
+toolName = "run_shell_command"
+argsPattern = '(?:AppData[/\\]|%APPDATA%|%LOCALAPPDATA%|%USERPROFILE%[/\\]AppData)'
+decision = "deny"
+denyMessage = "AppDataへのシェルアクセスは禁止されています。 / Shell access to AppData directory is not allowed."
+priority = 250
+
+# --- Shell command protection: renaming/deleting OS-default home folders ---
+
+[[rule]]
+description = "Deny renaming or deleting OS-default home folders"
+toolName = "run_shell_command"
+argsPattern = '(?:mv|Rename-Item|Remove-Item|rmdir)[^\n]*(?:~/|\$HOME/|%USERPROFILE%[/\\])(?:Downloads|Documents|Desktop|Pictures|Movies|Music|Videos|Public|OneDrive)(?![/\\])'
+decision = "deny"
+denyMessage = "OSデフォルトフォルダ（Downloads/Documents/Desktop等）のリネーム・削除は禁止されています。 / Renaming or deleting OS-default home folders is not allowed."
+priority = 250
+
+# ── Skill activations and automation commands ─────────────────────────────
+
+[[rule]]
+description = "Auto-allow all skill activations without confirmation"
+toolName = "activate_skill"
+decision = "allow"
+priority = 100
+
+[[rule]]
+description = "Auto-allow skill-catalog Python and Marp automation commands"
+toolName = "run_shell_command"
+commandPrefix = [
+  "python3 python/",
+  "python3 -m ",
+  "python python/",
+  "python -m ",
+  "venv/bin/python3 ",
+  "venv/bin/python ",
+  "venv\\Scripts\\python ",
+  "python/scripts/automation/automate.bat",
+  "python\\scripts\\automation\\automate.bat",
+  "marp ",
+]
+decision = "allow"
+allowRedirection = true
+priority = 100

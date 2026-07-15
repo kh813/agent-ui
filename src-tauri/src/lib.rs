@@ -36,7 +36,7 @@ pub fn run() {
             agent::get_update_command,
             agent::check_skill_folder,
             agent::build_skill,
-            agent::run_pre_launch_command,
+            agent::start_pre_launch_command,
             config::get_app_config,
             menu::set_theme,
             menu::set_auto_check_update

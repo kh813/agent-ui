@@ -1,0 +1,4 @@
+# .bat files must stay CRLF — Windows CMD can fail to parse LF-only batch
+# files. Without this, core.autocrlf=input (a common macOS/Linux git config)
+# silently strips CRLF back to LF on every commit.
+*.bat  text  eol=crlf

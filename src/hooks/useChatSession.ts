@@ -11,12 +11,6 @@ export interface PtyPrompt {
   url?: string;
 }
 
-interface PreLaunchResult {
-  success: boolean;
-  stdout: string;
-  stderr: string;
-}
-
 export interface UseChatSessionOptions {
   command: string;
   defaultArgs?: string[];
@@ -87,35 +81,64 @@ export function useChatSession({
       try {
         if (preLaunchCommand) {
           // Config-driven pre-launch check (AppConfig.pre_launch_command),
-          // e.g. a parent project's own setup/update/auth checks.
+          // e.g. a parent project's own setup/update/auth checks. Streamed
+          // live into the same terminal as the PTY session itself (via
+          // onRawOutput) since a first-run check can take several minutes
+          // (portable runtime download, venv creation, package installs) —
+          // a static "running checks..." message with no visible progress
+          // would read as a hang.
           showStatusMessage(
             isJa ? "起動前処理を実行しています..." : "Running pre-launch checks...",
             false
           );
 
+          const unlistenOutput = subscribeToTauriEvent(
+            listen<{ data: number[] }>("pre-launch-output", (event) => {
+              onRawOutput?.(new Uint8Array(event.payload.data));
+            })
+          );
+
+          let resolveStatus: (success: boolean) => void = () => {};
+          const statusPromise = new Promise<boolean>((resolve) => {
+            resolveStatus = resolve;
+          });
+          const unlistenStatus = subscribeToTauriEvent(
+            listen<{ success: boolean }>("pre-launch-status", (event) => {
+              resolveStatus(event.payload.success);
+            })
+          );
+
           try {
-            const result = await invoke<PreLaunchResult>("run_pre_launch_command", {
+            await invoke("start_pre_launch_command", {
               cwd: targetCwd || "",
               command: preLaunchCommand,
               args: preLaunchArgs,
             });
 
-            if (!result.success) {
-              const detail = (result.stderr || result.stdout).trim();
+            // First-run setup (portable Python/venv/deps) can take several
+            // minutes; fail closed (treat as failure) if it never reports
+            // back at all rather than waiting forever.
+            const timeoutMs = 10 * 60 * 1000;
+            const timeoutPromise = new Promise<boolean>((resolve) =>
+              setTimeout(() => resolve(false), timeoutMs)
+            );
+            const success = await Promise.race([statusPromise, timeoutPromise]);
+
+            if (!success) {
               if (preLaunchRequired) {
                 setStatus("error");
                 showStatusMessage(
                   isJa
-                    ? `起動前処理に失敗しました。セッションを開始できません。\n${detail}`
-                    : `Pre-launch check failed. Session was not started.\n${detail}`,
+                    ? "起動前処理に失敗しました。セッションを開始できません（詳細は上のログを参照）。"
+                    : "Pre-launch check failed. Session was not started (see the log above for details).",
                   false
                 );
                 return;
               }
               showStatusMessage(
                 isJa
-                  ? `⚠️ 起動前処理に失敗しましたが、セッションをそのまま開始します。\n${detail}`
-                  : `⚠️ Pre-launch check failed. Starting session anyway.\n${detail}`,
+                  ? "⚠️ 起動前処理に失敗しましたが、セッションをそのまま開始します（詳細は上のログを参照）。"
+                  : "⚠️ Pre-launch check failed. Starting session anyway (see the log above for details).",
                 false
               );
             } else {
@@ -142,6 +165,9 @@ export function useChatSession({
                 : `⚠️ Failed to run pre-launch command. Starting session anyway.\n${preLaunchErr.toString()}`,
               false
             );
+          } finally {
+            unlistenOutput();
+            unlistenStatus();
           }
         } else {
           // Fallback (Task 9-5 & 9-6): check and auto-rebuild a `skill` folder

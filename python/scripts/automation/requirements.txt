@@ -1,0 +1,6 @@
+playwright
+requests
+tomli
+pytest
+openpyxl
+pandas

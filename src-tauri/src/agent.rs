@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
 use std::path::{PathBuf};
-use std::process::Command;
-use tauri::{AppHandle, Manager};
+use std::process::{Command, Stdio};
+use std::thread;
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::pty::resolve_app_bundle_dir;
+use crate::pty::{get_default_cwd, resolve_app_bundle_dir};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -413,39 +415,82 @@ pub async fn build_skill_internal<R: tauri::Runtime>(
 // generalizes the skill-folder-specific check_skill_folder/build_skill flow
 // above for projects that need more than "rebuild a skill folder".
 //
-// Runs via Command::output() (blocking, no live streaming) rather than the
-// PTY session machinery in pty.rs: the PTY exit path only ever emits
-// "terminated"/"error" with no exit code (see pty.rs's read loop), which
-// isn't enough to implement pre_launch_required's block-on-failure
-// semantics. A future version could stream progress through the PTY instead
-// if the blocking wait proves too opaque for slow first-run setups.
+// Streams output live via "pre-launch-output" events (same payload shape and
+// consumption path as pty.rs's "pty-output" — the frontend feeds both into
+// the same xterm.js instance via onRawOutput) rather than blocking silently:
+// a project's pre-launch check can take minutes on a first run (e.g.
+// downloading a portable Python runtime, creating a venv, installing
+// dependencies), during which a static "running checks..." message with no
+// visible progress reads as a hang.
+//
+// Unlike pty.rs's PTY session, this does NOT use a real PTY (portable_pty) —
+// just plain piped stdio read on background threads — because we need the
+// real process exit code for pre_launch_required's block-on-failure
+// semantics, and Child::wait() gives us that directly. The PTY read loop in
+// pty.rs only ever emits "terminated"/"error" with no exit code (that's fine
+// for the install/update flows, which use it via an indirect
+// check-installed-status-afterward signal instead), which isn't enough here.
 
 #[derive(Serialize, Clone, Debug)]
-pub struct PreLaunchResult {
+pub struct PreLaunchOutputPayload {
+    pub data: Vec<u8>,
+}
+
+// Since start_pre_launch_command_internal reads plain piped stdio (not a
+// real PTY — see the comment above on why), the child's bare "\n" line
+// endings reach us as-is: no kernel tty line discipline (ONLCR) is there to
+// translate them to "\r\n" the way it transparently does for pty.rs's real
+// PTY session. The frontend feeds both output streams into the same
+// xterm.js instance, which — like any real terminal — only resets the
+// cursor column on "\r"; a bare "\n" just moves down a row, producing a
+// diagonal/staircase misalignment across multi-line output (observed with
+// preflight.sh's Japanese-language setup prompts). Insert the missing "\r"
+// ourselves. `last_was_cr` carries state across chunk boundaries so a "\r"
+// that ends one 1024-byte read and the "\n" that begins the next aren't
+// double-translated into "\r\r\n".
+fn normalize_lf_to_crlf(buf: &[u8], last_was_cr: &mut bool) -> Vec<u8> {
+    let mut out = Vec::with_capacity(buf.len());
+    for (i, &b) in buf.iter().enumerate() {
+        if b == b'\n' {
+            let prev_was_cr = if i == 0 { *last_was_cr } else { buf[i - 1] == b'\r' };
+            if !prev_was_cr {
+                out.push(b'\r');
+            }
+        }
+        out.push(b);
+    }
+    if let Some(&last) = buf.last() {
+        *last_was_cr = last == b'\r';
+    }
+    out
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PreLaunchStatusPayload {
     pub success: bool,
-    pub stdout: String,
-    pub stderr: String,
 }
 
 #[tauri::command]
-pub async fn run_pre_launch_command(
+pub async fn start_pre_launch_command<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     cwd: String,
     command: String,
     args: Vec<String>,
-) -> Result<PreLaunchResult, String> {
-    run_pre_launch_command_internal(cwd, command, args)
+) -> Result<(), String> {
+    start_pre_launch_command_internal(app, cwd, command, args)
 }
 
-fn run_pre_launch_command_internal(
+fn start_pre_launch_command_internal<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     cwd: String,
     command: String,
     args: Vec<String>,
-) -> Result<PreLaunchResult, String> {
+) -> Result<(), String> {
     if command.is_empty() {
         return Err("pre_launch_command is empty".to_string());
     }
 
-    let mut cmd = std::process::Command::new(&command);
+    let mut cmd = Command::new(&command);
     cmd.args(&args);
     // Match start_pty's cwd resolution (pty.rs): fall back to the resolved
     // project root rather than leaving the child's cwd unset, which would
@@ -455,22 +500,56 @@ fn run_pre_launch_command_internal(
     // Without this, a project bundling this app whose user never explicitly
     // picked a working directory would see "No such file or directory".
     if cwd.is_empty() {
-        cmd.current_dir(crate::pty::get_default_cwd());
+        cmd.current_dir(get_default_cwd());
     } else {
         cmd.current_dir(&cwd);
     }
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let output = cmd
-        .output()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to execute pre-launch command '{}': {}", command, e))?;
 
-    Ok(PreLaunchResult {
-        success: output.status.success(),
-        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-    })
+    // Order between the stdout and stderr streams isn't preserved relative
+    // to each other (two independent reader threads), only within each
+    // stream — acceptable for progress display, where exact interleaving
+    // rarely matters.
+    for pipe in [
+        child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+        child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let app_clone = app.clone();
+        thread::spawn(move || {
+            let mut reader = pipe;
+            let mut buf = [0u8; 1024];
+            let mut last_was_cr = false;
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let data = normalize_lf_to_crlf(&buf[..n], &mut last_was_cr);
+                        let _ = app_clone.emit(
+                            "pre-launch-output",
+                            PreLaunchOutputPayload { data },
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    thread::spawn(move || {
+        let success = child.wait().map(|s| s.success()).unwrap_or(false);
+        let _ = app.emit("pre-launch-status", PreLaunchStatusPayload { success });
+    });
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -535,52 +614,191 @@ mod tests {
         println!("Mock update result for agy: {:?}", s);
     }
 
-    #[test]
-    fn test_run_pre_launch_command_success() {
+    // Drains a "pre-launch-status" success flag and the concatenated text of
+    // all "pre-launch-output" events received within a short timeout, using
+    // the same mock_app + Listener pattern as pty.rs's test_start_pty_and_emission.
+    async fn run_and_collect<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+        cwd: String,
+        command: String,
+        args: Vec<String>,
+    ) -> (Option<bool>, String) {
+        use tauri::Listener;
+
+        let (status_tx, mut status_rx) = tokio::sync::mpsc::channel(1);
+        app.listen("pre-launch-status", move |event| {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                if let Some(success) = payload.get("success").and_then(|v| v.as_bool()) {
+                    let _ = status_tx.try_send(success);
+                }
+            }
+        });
+
+        let (out_tx, mut out_rx) = tokio::sync::mpsc::channel(64);
+        app.listen("pre-launch-output", move |event| {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                if let Some(bytes) = payload.get("data").and_then(|v| v.as_array()) {
+                    let data: Vec<u8> = bytes.iter().filter_map(|b| b.as_u64()).map(|b| b as u8).collect();
+                    let _ = out_tx.try_send(String::from_utf8_lossy(&data).into_owned());
+                }
+            }
+        });
+
+        start_pre_launch_command_internal(app.clone(), cwd, command, args).unwrap();
+
+        let mut success = None;
+        let mut output = String::new();
+        let deadline = tokio::time::sleep(tokio::time::Duration::from_secs(3));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                Some(s) = status_rx.recv() => { success = Some(s); if out_rx.is_empty() { break; } }
+                Some(chunk) = out_rx.recv() => { output.push_str(&chunk); }
+                _ = &mut deadline => break,
+            }
+        }
+        (success, output)
+    }
+
+    #[tokio::test]
+    async fn test_start_pre_launch_command_success() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
         let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
             ("cmd", vec!["/c", "exit 0"])
         } else {
             ("sh", vec!["-c", "exit 0"])
         };
-        let result = run_pre_launch_command_internal(
+        let (success, _) = run_and_collect(
+            &handle,
             String::new(),
             cmd.to_string(),
             args.into_iter().map(String::from).collect(),
         )
-        .unwrap();
-        assert!(result.success);
+        .await;
+        assert_eq!(success, Some(true));
     }
 
-    #[test]
-    fn test_run_pre_launch_command_failure_surfaces_nonzero_exit() {
+    #[tokio::test]
+    async fn test_start_pre_launch_command_failure_surfaces_nonzero_exit() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
         let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
             ("cmd", vec!["/c", "exit 1"])
         } else {
             ("sh", vec!["-c", "exit 1"])
         };
-        let result = run_pre_launch_command_internal(
+        let (success, _) = run_and_collect(
+            &handle,
             String::new(),
             cmd.to_string(),
             args.into_iter().map(String::from).collect(),
         )
-        .unwrap();
-        assert!(!result.success);
+        .await;
+        assert_eq!(success, Some(false));
     }
 
     #[test]
-    fn test_run_pre_launch_command_empty_command_is_error() {
-        let result = run_pre_launch_command_internal(String::new(), String::new(), vec![]);
+    fn test_start_pre_launch_command_empty_command_is_error() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let result = start_pre_launch_command_internal(app.handle().clone(), String::new(), String::new(), vec![]);
         assert!(result.is_err());
     }
 
+    // Regression test for the "column staircase" bug (2026-07-15): piped
+    // child stdout carries bare "\n" with no kernel tty layer to add the "\r"
+    // xterm.js needs to reset the cursor column, so multi-line output (e.g.
+    // preflight.sh's setup prompts) rendered progressively further right on
+    // each line instead of starting at column 0.
     #[test]
-    fn test_run_pre_launch_command_uses_cwd() {
+    fn test_normalize_lf_to_crlf_inserts_missing_cr() {
+        let mut last_was_cr = false;
+        let out = normalize_lf_to_crlf(b"line one\nline two\n", &mut last_was_cr);
+        assert_eq!(out, b"line one\r\nline two\r\n");
+    }
+
+    #[test]
+    fn test_normalize_lf_to_crlf_leaves_existing_crlf_untouched() {
+        let mut last_was_cr = false;
+        let out = normalize_lf_to_crlf(b"already\r\ncrlf\r\n", &mut last_was_cr);
+        assert_eq!(out, b"already\r\ncrlf\r\n");
+    }
+
+    #[test]
+    fn test_normalize_lf_to_crlf_handles_cr_split_across_chunks() {
+        // A "\r" landing on the last byte of one 1024-byte read and the "\n"
+        // that completes it arriving at the start of the next read must not
+        // be double-translated into "\r\r\n".
+        let mut last_was_cr = false;
+        let first = normalize_lf_to_crlf(b"partial\r", &mut last_was_cr);
+        assert_eq!(first, b"partial\r");
+        assert!(last_was_cr);
+
+        let second = normalize_lf_to_crlf(b"\nrest", &mut last_was_cr);
+        assert_eq!(second, b"\nrest");
+    }
+
+    #[tokio::test]
+    async fn test_start_pre_launch_command_multiline_output_uses_crlf() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
+        let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c", "echo line-one&echo line-two"])
+        } else {
+            ("printf", vec!["line-one\\nline-two\\n"])
+        };
+        let (_success, output) = run_and_collect(
+            &handle,
+            String::new(),
+            cmd.to_string(),
+            args.into_iter().map(String::from).collect(),
+        )
+        .await;
+        assert!(
+            output.contains("line-one\r\nline-two"),
+            "expected CRLF-separated lines, got: {:?}",
+            output
+        );
+    }
+
+    #[tokio::test]
+    async fn test_start_pre_launch_command_streams_output() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
+        let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c", "echo streaming-test"])
+        } else {
+            ("echo", vec!["streaming-test"])
+        };
+        let (success, output) = run_and_collect(
+            &handle,
+            String::new(),
+            cmd.to_string(),
+            args.into_iter().map(String::from).collect(),
+        )
+        .await;
+        assert_eq!(success, Some(true));
+        assert!(output.contains("streaming-test"), "expected streamed output to contain the echoed text, got: {:?}", output);
+    }
+
+    #[tokio::test]
+    async fn test_start_pre_launch_command_uses_cwd() {
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
         let temp_dir = std::env::temp_dir().join(format!(
             "agent_ui_prelaunch_test_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();
         std::fs::write(temp_dir.join("marker.txt"), "hi").unwrap();
@@ -590,31 +808,27 @@ mod tests {
         } else {
             ("sh", vec!["-c".to_string(), "test -f marker.txt".to_string()])
         };
-        let result = run_pre_launch_command_internal(
-            temp_dir.to_string_lossy().to_string(),
-            cmd.to_string(),
-            args,
-        )
-        .unwrap();
-        assert!(result.success, "command should find marker.txt in the given cwd");
+        let (success, _) = run_and_collect(&handle, temp_dir.to_string_lossy().to_string(), cmd.to_string(), args).await;
+        assert_eq!(success, Some(true), "command should find marker.txt in the given cwd");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
-    #[test]
-    fn test_run_pre_launch_command_empty_cwd_falls_back_to_default_cwd() {
+    #[tokio::test]
+    async fn test_start_pre_launch_command_empty_cwd_falls_back_to_default_cwd() {
         // Regression guard: an empty cwd must resolve to get_default_cwd()
         // (matching start_pty's own fallback), not leave the child process's
         // cwd unset — which previously broke a relative pre_launch_args
         // script the moment the user hadn't explicitly picked a working
         // directory yet.
-        let default_dir = crate::pty::get_default_cwd();
+        use tauri::test::mock_app;
+        let app = mock_app();
+        let handle = app.handle().clone();
+
+        let default_dir = get_default_cwd();
         let marker_name = format!(
             "agent_ui_prelaunch_default_cwd_marker_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
         );
         std::fs::write(default_dir.join(&marker_name), "hi").unwrap();
 
@@ -623,8 +837,8 @@ mod tests {
         } else {
             ("sh", vec!["-c".to_string(), format!("test -f {}", marker_name)])
         };
-        let result = run_pre_launch_command_internal(String::new(), cmd.to_string(), args).unwrap();
-        assert!(result.success, "empty cwd should resolve to get_default_cwd(), not the OS's arbitrary default");
+        let (success, _) = run_and_collect(&handle, String::new(), cmd.to_string(), args).await;
+        assert_eq!(success, Some(true), "empty cwd should resolve to get_default_cwd(), not the OS's arbitrary default");
 
         let _ = std::fs::remove_file(default_dir.join(&marker_name));
     }

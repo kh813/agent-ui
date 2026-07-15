@@ -10,5 +10,14 @@
       "command": "agy",
       "args": []
     }
-  ]
+  ],
+  "pre_launch_macos": {
+    "command": "bash",
+    "args": ["preflight.sh"]
+  },
+  "pre_launch_windows": {
+    "command": "cmd",
+    "args": ["/c", "preflight.bat"]
+  },
+  "pre_launch_required": true
 }
