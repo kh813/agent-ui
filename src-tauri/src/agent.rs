@@ -187,11 +187,19 @@ pub async fn detect_agent_internal<R: tauri::Runtime>(
                 config.binary.clone()
             };
 
-            // Check in app bundle directory (app/bin/agy)
+            // Check in app bundle directory (bin/agy)
             let exe_dir = resolve_app_bundle_dir(exe_path.clone());
             let local_path = exe_dir.join("bin").join(&local_bin_name);
             if local_path.exists() {
                 found_path = Some(local_path.to_string_lossy().to_string());
+            }
+
+            // Check in app bundle directory's app/bin (app/bin/agy)
+            if found_path.is_none() {
+                let local_path = exe_dir.join("app").join("bin").join(&local_bin_name);
+                if local_path.exists() {
+                    found_path = Some(local_path.to_string_lossy().to_string());
+                }
             }
 
             // Check in project root (bin/agy)

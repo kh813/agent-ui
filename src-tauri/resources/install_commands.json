@@ -17,11 +17,11 @@
     "install": {
       "macos": {
         "command": "bash",
-        "args": ["-c", "mkdir -p bin && curl -fsSL https://antigravity.google.com/install.sh | BINDIR=./bin bash"]
+        "args": ["-c", "mkdir -p app/bin && curl -fsSL https://antigravity.google.com/install.sh | BINDIR=./app/bin bash"]
       },
       "windows": {
         "command": "powershell.exe",
-        "args": ["-Command", "if (!(Test-Path 'bin')) { New-Item -ItemType Directory 'bin' }; $env:BINDIR='.\\bin'; iex (iwr -useb https://antigravity.google.com/install.ps1)"]
+        "args": ["-Command", "if (!(Test-Path 'app/bin')) { New-Item -ItemType Directory 'app/bin' }; $env:BINDIR='.\\app\\bin'; iex (iwr -useb https://antigravity.google.com/install.ps1)"]
       }
     },
     "update": {
