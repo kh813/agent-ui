@@ -54,6 +54,19 @@ jobs:
       - name: build tauri app
         run: npm run tauri build -- ${{ matrix.args }}
 
+      - name: re-sign macOS app (fixes broken resource seal)
+        if: matrix.platform == 'macos-latest'
+        # Confirmed for v0.0.8: Tauri's own ad-hoc signature gets sealed
+        # before Contents/Resources is fully finalized, so `codesign
+        # --verify` fails with "code has no resources but signature
+        # indicates they must be present" — macOS then refuses to launch
+        # the app at all ("is damaged and can't be opened"), independent of
+        # quarantine/Gatekeeper settings. A fresh ad-hoc re-sign over the
+        # complete, final bundle fixes this (verified empirically).
+        run: |
+          codesign --force --deep --sign - src-tauri/target/aarch64-apple-darwin/release/bundle/macos/agent-ui.app
+          codesign --verify --deep --strict src-tauri/target/aarch64-apple-darwin/release/bundle/macos/agent-ui.app
+
       - name: package macOS app to zip
         if: matrix.platform == 'macos-latest'
         run: |
