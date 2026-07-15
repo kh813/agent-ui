@@ -97,6 +97,28 @@ class TestApply:
         assert dest.exists()
         assert marker.read_text().strip() == "v0.2.0"
 
+    def test_curl_has_connect_and_max_time_limits(self, project_root, monkeypatch):
+        """Regression test: a stalled network connection (no active refusal,
+        just silence) must not hang apply() forever — hit for real via a
+        confused agy skill invocation (`/update --test`, an argument the
+        GitHub-Releases-based self_update.py has no concept of)."""
+        monkeypatch.setattr(su, "_fetch_latest_release", lambda: _fake_release("v0.2.0"))
+
+        captured = {}
+
+        def fake_run(cmd, *a, **kw):
+            if cmd[0] == "curl":
+                captured["cmd"] = cmd
+                _make_fake_zip(Path(cmd[-1]))
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(su.subprocess, "run", fake_run)
+
+        su.apply()
+
+        assert "--connect-timeout" in captured["cmd"], "curl call has no connect timeout"
+        assert "--max-time" in captured["cmd"], "curl call has no overall time limit"
+
     def test_failed_download_preserves_existing_install(self, project_root, monkeypatch):
         dest = project_root / _dest_name()
         if sys.platform == "win32":

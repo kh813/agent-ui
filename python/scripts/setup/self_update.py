@@ -99,7 +99,8 @@ def apply() -> None:
         tmp_path = Path(tmp)
         zip_path = tmp_path / asset_name
         subprocess.run(
-            ["curl", "-fsSL", url, "-o", str(zip_path)],
+            ["curl", "-fsSL", "--connect-timeout", "10", "--max-time", "120",
+             url, "-o", str(zip_path)],
             check=True, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
         )
         staging = tmp_path / "extracted"

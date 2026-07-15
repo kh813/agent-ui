@@ -24,6 +24,9 @@ Checks agent-ui's GitHub Releases (`kh813/agent-ui`) and, if a newer version exi
 Windowsでは `python3` を `python` に読み替えてください。
 On Windows, replace `python3` with `python`.
 
+このスキルに `--test` / `--prod` のようなチャンネル切り替えフラグはありません（Google Drive経由の旧アップデート方式にあった概念です）。ユーザーがそうしたフラグを付けて呼び出した場合は無視し、常に `check` から開始してください。
+This skill has no `--test`/`--prod` channel-switching flags (that was a concept from the old Google-Drive-based update mechanism). If the user includes such a flag, ignore it and always start with `check`.
+
 ## 手順 / Workflow
 
 ユーザーが `/update` と言った場合、まず `check` を実行して更新の有無を確認します：
