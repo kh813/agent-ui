@@ -5,6 +5,8 @@ use std::path::{PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Manager};
 
+use crate::pty::resolve_app_bundle_dir;
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -167,17 +169,25 @@ pub async fn detect_agent_internal<R: tauri::Runtime>(
         version_args = config.version_args.clone();
 
         // 0. Scan application local subdirectory `./bin/` (highly preferred for portable ZIP config)
+        //
+        // Bug fixed: this used to take exe_path.parent() directly, which on
+        // macOS is just Contents/MacOS/ (one level above the raw Mach-O
+        // binary inside the .app bundle) — nowhere near the actual `./bin/`
+        // sibling of the bundle itself, so this check silently never matched
+        // on macOS and always fell through to steps 1/2 below. Use
+        // resolve_app_bundle_dir, which correctly unwraps the .app bundle on
+        // macOS (and is a no-op beyond exe_path.parent() on Windows/Linux,
+        // where the executable already sits directly in this folder).
         if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let local_bin_name = if is_windows {
-                    format!("{}.exe", config.binary)
-                } else {
-                    config.binary.clone()
-                };
-                let local_path = exe_dir.join("bin").join(local_bin_name);
-                if local_path.exists() {
-                    found_path = Some(local_path.to_string_lossy().to_string());
-                }
+            let exe_dir = resolve_app_bundle_dir(exe_path);
+            let local_bin_name = if is_windows {
+                format!("{}.exe", config.binary)
+            } else {
+                config.binary.clone()
+            };
+            let local_path = exe_dir.join("bin").join(local_bin_name);
+            if local_path.exists() {
+                found_path = Some(local_path.to_string_lossy().to_string());
             }
         }
 
@@ -437,7 +447,16 @@ fn run_pre_launch_command_internal(
 
     let mut cmd = std::process::Command::new(&command);
     cmd.args(&args);
-    if !cwd.is_empty() {
+    // Match start_pty's cwd resolution (pty.rs): fall back to the resolved
+    // project root rather than leaving the child's cwd unset, which would
+    // default to wherever the OS happened to launch this app from (e.g. "/"
+    // on macOS for a double-clicked .app) — not the project root where a
+    // relative pre_launch_args script (like "preflight.sh") actually lives.
+    // Without this, a project bundling this app whose user never explicitly
+    // picked a working directory would see "No such file or directory".
+    if cwd.is_empty() {
+        cmd.current_dir(crate::pty::get_default_cwd());
+    } else {
         cmd.current_dir(&cwd);
     }
     #[cfg(target_os = "windows")]
@@ -580,5 +599,33 @@ mod tests {
         assert!(result.success, "command should find marker.txt in the given cwd");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_run_pre_launch_command_empty_cwd_falls_back_to_default_cwd() {
+        // Regression guard: an empty cwd must resolve to get_default_cwd()
+        // (matching start_pty's own fallback), not leave the child process's
+        // cwd unset — which previously broke a relative pre_launch_args
+        // script the moment the user hadn't explicitly picked a working
+        // directory yet.
+        let default_dir = crate::pty::get_default_cwd();
+        let marker_name = format!(
+            "agent_ui_prelaunch_default_cwd_marker_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        std::fs::write(default_dir.join(&marker_name), "hi").unwrap();
+
+        let (cmd, args): (&str, Vec<String>) = if cfg!(target_os = "windows") {
+            ("cmd", vec!["/c".to_string(), format!("if exist {} (exit 0) else (exit 1)", marker_name)])
+        } else {
+            ("sh", vec!["-c".to_string(), format!("test -f {}", marker_name)])
+        };
+        let result = run_pre_launch_command_internal(String::new(), cmd.to_string(), args).unwrap();
+        assert!(result.success, "empty cwd should resolve to get_default_cwd(), not the OS's arbitrary default");
+
+        let _ = std::fs::remove_file(default_dir.join(&marker_name));
     }
 }

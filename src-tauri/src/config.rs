@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{PathBuf, Path};
 
+use crate::agent::InstallCommand;
 use crate::pty::resolve_project_root;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -39,6 +40,17 @@ pub struct AppConfig {
     // version check that shouldn't block launch on a flaky network).
     #[serde(default = "default_true")]
     pub pre_launch_required: bool,
+    // OS-specific overrides for pre_launch_command/pre_launch_args, for
+    // projects whose pre-launch check differs by platform (e.g. `bash
+    // preflight.sh` vs `cmd /c preflight.bat`). Mirrors the macos/windows
+    // split already used for install/update commands in agent.rs. Resolved
+    // into the flat pre_launch_command/pre_launch_args fields above by
+    // get_app_config, so callers (Rust and frontend alike) only ever see the
+    // already-resolved flat fields.
+    #[serde(default)]
+    pub pre_launch_macos: Option<InstallCommand>,
+    #[serde(default)]
+    pub pre_launch_windows: Option<InstallCommand>,
 }
 
 impl Default for AppConfig {
@@ -57,8 +69,27 @@ impl Default for AppConfig {
             pre_launch_command: None,
             pre_launch_args: vec![],
             pre_launch_required: true,
+            pre_launch_macos: None,
+            pre_launch_windows: None,
         }
     }
+}
+
+// Resolve pre_launch_macos/pre_launch_windows (if set) into the flat
+// pre_launch_command/pre_launch_args fields for the current OS, so
+// downstream consumers never need to branch on platform themselves.
+fn resolve_pre_launch_override(mut config: AppConfig) -> AppConfig {
+    let is_windows = cfg!(target_os = "windows");
+    let override_cmd = if is_windows {
+        config.pre_launch_windows.take()
+    } else {
+        config.pre_launch_macos.take()
+    };
+    if let Some(cmd) = override_cmd {
+        config.pre_launch_command = Some(cmd.command);
+        config.pre_launch_args = cmd.args;
+    }
+    config
 }
 
 fn get_exe_dir() -> Option<PathBuf> {
@@ -100,7 +131,7 @@ pub fn get_app_config(cwd: Option<String>) -> AppConfig {
         if path.exists() {
             if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
-                    return config;
+                    return resolve_pre_launch_override(config);
                 }
             }
         }
@@ -203,6 +234,50 @@ mod tests {
         assert_eq!(config.pre_launch_command, Some("bash".to_string()));
         assert_eq!(config.pre_launch_args, vec!["preflight.sh".to_string()]);
         assert_eq!(config.pre_launch_required, false);
+    }
+
+    #[test]
+    fn test_pre_launch_os_override_resolves_for_current_platform() {
+        let raw = r#"{
+            "app_name": "OS Override",
+            "default_theme": "light",
+            "font_family": "Menlo",
+            "font_size": 13,
+            "engines": [],
+            "pre_launch_command": "fallback",
+            "pre_launch_args": ["should-not-be-used"],
+            "pre_launch_macos": {"command": "bash", "args": ["preflight.sh"]},
+            "pre_launch_windows": {"command": "cmd", "args": ["/c", "preflight.bat"]}
+        }"#;
+        let config: AppConfig = serde_json::from_str(raw).unwrap();
+        let resolved = resolve_pre_launch_override(config);
+
+        if cfg!(target_os = "windows") {
+            assert_eq!(resolved.pre_launch_command, Some("cmd".to_string()));
+            assert_eq!(resolved.pre_launch_args, vec!["/c".to_string(), "preflight.bat".to_string()]);
+        } else {
+            assert_eq!(resolved.pre_launch_command, Some("bash".to_string()));
+            assert_eq!(resolved.pre_launch_args, vec!["preflight.sh".to_string()]);
+        }
+    }
+
+    #[test]
+    fn test_pre_launch_no_override_keeps_flat_fields() {
+        let config: AppConfig = serde_json::from_str(
+            r#"{
+                "app_name": "No Override",
+                "default_theme": "light",
+                "font_family": "Menlo",
+                "font_size": 13,
+                "engines": [],
+                "pre_launch_command": "python3",
+                "pre_launch_args": ["preflight.py"]
+            }"#,
+        )
+        .unwrap();
+        let resolved = resolve_pre_launch_override(config);
+        assert_eq!(resolved.pre_launch_command, Some("python3".to_string()));
+        assert_eq!(resolved.pre_launch_args, vec!["preflight.py".to_string()]);
     }
 
     fn uuid_like_timestamp() -> u128 {
