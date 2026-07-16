@@ -144,6 +144,77 @@ class TestApply:
         )
 
 
+class TestWindowsLockedExeSwap:
+    """Regression test (2026-07-16): apply() used to delete-then-create at
+    the same path when swapping in the new exe. On Windows this is exactly
+    the pattern already confirmed broken for the separate migration
+    update.py: deleting a currently-running exe succeeds (the OS loader
+    opens it with FILE_SHARE_DELETE), but creating a new file at that same
+    path right after fails until the last handle closes -- i.e. until the
+    user restarts. Since apply() runs from inside an agy session spawned by
+    the very exe being replaced, this would have silently broken the
+    standard /update skill on every real Windows machine. Fix: rename the
+    old exe aside first (Windows permits renaming a running exe) instead of
+    deleting it, freeing the original path without needing the old handle
+    to close."""
+
+    def test_apply_renames_locked_exe_instead_of_deleting_it(self, project_root, monkeypatch):
+        monkeypatch.setattr(su.sys, "platform", "win32")
+        dest = project_root / "agent-deck.exe"
+        dest.write_text("old binary")
+        (project_root / f"{dest.name}.version").write_text("v0.1.0")
+        monkeypatch.setattr(su, "_fetch_latest_release", lambda: _fake_release("v0.2.0"))
+
+        real_unlink = Path.unlink
+
+        def guarded_unlink(self_path, *a, **kw):
+            if self_path == dest:
+                raise PermissionError(
+                    "The process cannot access the file because it is "
+                    "being used by another process"
+                )
+            return real_unlink(self_path, *a, **kw)
+
+        monkeypatch.setattr(Path, "unlink", guarded_unlink)
+
+        def fake_run(cmd, *a, **kw):
+            if cmd[0] == "curl":
+                _make_fake_zip(Path(cmd[-1]))
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(su.subprocess, "run", fake_run)
+
+        su.apply()  # must not raise despite dest being "locked"
+
+        assert dest.read_text() == "fake exe content", "new exe must land at the original path"
+        assert (project_root / "agent-deck.exe.old").exists(), (
+            "old exe should be renamed aside, not deleted in place"
+        )
+
+    def test_apply_cleans_up_stale_old_file_from_a_prior_update(self, project_root, monkeypatch):
+        monkeypatch.setattr(su.sys, "platform", "win32")
+        dest = project_root / "agent-deck.exe"
+        dest.write_text("old binary")
+        (dest.with_name("agent-deck.exe.old")).write_text("stale from a prior update")
+        (project_root / f"{dest.name}.version").write_text("v0.1.0")
+        monkeypatch.setattr(su, "_fetch_latest_release", lambda: _fake_release("v0.2.0"))
+
+        def fake_run(cmd, *a, **kw):
+            if cmd[0] == "curl":
+                _make_fake_zip(Path(cmd[-1]))
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(su.subprocess, "run", fake_run)
+
+        su.apply()
+
+        assert dest.read_text() == "fake exe content"
+        assert (dest.with_name("agent-deck.exe.old")).read_text() == "old binary", (
+            "the stale .old from a prior update must be cleared before "
+            "this update's own old exe is renamed into that slot."
+        )
+
+
 def _make_org_rebranded_zip(zip_path: Path, with_python: bool = True) -> None:
     """Fake upstream asset: the bundle inside the release zip is always
     agent-deck.* (the project's own canonical name since the 2026-07-16

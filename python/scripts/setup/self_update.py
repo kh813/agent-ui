@@ -220,7 +220,27 @@ def apply() -> None:
         elif dest.is_dir():
             shutil.rmtree(dest)
         elif dest.exists():
-            dest.unlink()
+            if sys.platform == "win32":
+                # This process's own exe is `dest` (or its parent, if this
+                # script is running inside an agy session spawned by it) —
+                # Windows lets you DELETE or RENAME a running exe (the OS
+                # loader opens it with FILE_SHARE_DELETE), but it won't let
+                # you create a new file at that same path until the last
+                # handle closes (i.e. until the user restarts): a plain
+                # dest.unlink() here "succeeds" but the shutil.move() right
+                # after it then fails with "Access is denied". Renaming the
+                # old exe out of the way first frees the original path
+                # immediately, since we're no longer touching the
+                # pending-delete file at all.
+                old_dest = dest.with_name(dest.name + ".old")
+                if old_dest.exists():
+                    try:
+                        old_dest.unlink()
+                    except OSError:
+                        pass  # leftover from a prior update; harmless, ignore
+                dest.rename(old_dest)
+            else:
+                dest.unlink()
         shutil.move(str(new_dest), str(dest))
 
         _install_python_payload(staging)
