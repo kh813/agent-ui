@@ -39,7 +39,7 @@ yarn-error.log*
 /src-tauri/gen/
 
 # Python (bundled skills + automation code)
-/venv/
+/app/venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -67,7 +67,6 @@ python/skills/skill-catalog/catalog-index.md
 
 # Runtime artifacts created by setup.py at first launch
 /app/bin/
-/templates/*.pptx
 /.gemini/
 /files/*
 !/files/.gitkeep

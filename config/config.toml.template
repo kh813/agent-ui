@@ -13,13 +13,6 @@ catalog_folder_id = "YOUR_CATALOG_FOLDER_ID"
 catalog_url       = "https://drive.google.com/drive/folders/YOUR_CATALOG_FOLDER_ID"
 catalog_file_id   = ""
 
-[template]
-# PowerPoint template (downloaded on first use via Drive API — not included in the ZIP)
-# name: filename to save as in templates/
-# url:  Google Slides or Drive URL (edit/export/share link — any URL containing the file ID)
-name = "YOUR_TEMPLATE.pptx"
-url  = "https://docs.google.com/presentation/d/YOUR_FILE_ID/edit"
-
 [user]
 # Your email address. If omitted, auto-detected from OS login name (requires
 # a wrapping project to supply [company].domain — see below).

@@ -4,17 +4,7 @@ import platform
 import subprocess
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-try:
-    from config import PPTX_TEMPLATE_NAME, PPTX_TEMPLATE_URL
-except Exception:
-    PPTX_TEMPLATE_NAME = None
-    PPTX_TEMPLATE_URL = None
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_BIN = "app/bin"
-TEMPLATES_DIR = "templates"
-MARP_VERSION = "v4.3.1"
 CONFIG_PATH = Path(SCRIPT_DIR).parents[2] / "config.toml"
 
 def run_command(cmd, description=None):
@@ -26,70 +16,6 @@ def run_command(cmd, description=None):
         print(f"Error: {e}")
         return False
     return True
-
-def setup_binaries():
-    os.makedirs(APP_BIN, exist_ok=True)
-    system = platform.system().lower()
-
-    targets = {
-        "darwin": {
-            "marp": {
-                "url": f"https://github.com/marp-team/marp-cli/releases/download/{MARP_VERSION}/marp-cli-{MARP_VERSION}-mac.tar.gz",
-                "file": "marp",
-                "is_tar": True
-            }
-        },
-        "windows": {
-            "marp": {
-                "url": f"https://github.com/marp-team/marp-cli/releases/download/{MARP_VERSION}/marp-cli-{MARP_VERSION}-win.zip",
-                "file": "marp.exe",
-                "is_zip": True
-            }
-        }
-    }
-
-    if system not in targets:
-        print(f"Unsupported OS: {system}")
-        return
-
-    for name, info in targets[system].items():
-        path = os.path.join(APP_BIN, info["file"])
-        if not os.path.exists(path):
-            print(f"{name} not found. Downloading...")
-            url = info["url"]
-            ext = ".tar.gz" if info.get("is_tar") else ".zip"
-            tmp_file = f"tmp_{name}{ext}"
-            if run_command(f"curl -L -# -o '{tmp_file}' {url}"):
-                if info.get("is_tar"):
-                    run_command(f"tar -xzf '{tmp_file}' -C '{APP_BIN}'")
-                else:
-                    run_command(f"unzip -j '{tmp_file}' {info['file']} -d '{APP_BIN}'")
-                os.remove(tmp_file)
-        else:
-            print(f"{name} already exists at {path}.")
-
-        if system == "darwin":
-            run_command(f"chmod +x '{path}'")
-            run_command(f"xattr -d com.apple.quarantine '{path}' 2>/dev/null || true")
-
-def _is_valid_pptx(path):
-    """Return True if the file exists, is >10 KB, and starts with the ZIP magic bytes (PK)."""
-    if not os.path.isfile(path) or os.path.getsize(path) < 10240:
-        return False
-    with open(path, 'rb') as f:
-        return f.read(2) == b'PK'
-
-def setup_templates():
-    if not PPTX_TEMPLATE_NAME or not PPTX_TEMPLATE_URL:
-        print("[WARN] PPTX template config missing — skipping template download.")
-        return
-    os.makedirs(TEMPLATES_DIR, exist_ok=True)
-    path = os.path.join(TEMPLATES_DIR, PPTX_TEMPLATE_NAME)
-    if _is_valid_pptx(path):
-        print(f"==> Template already exists and is valid — skipping download: {path}")
-        return
-    print(f"==> Downloading latest PPTX template to {path}...")
-    run_command(f"curl -L -# -o '{path}' '{PPTX_TEMPLATE_URL}'")
 
 def build_skills():
     print("==> Building skill packages...")
@@ -124,6 +50,12 @@ def setup_venv():
         python = venv_dir / "bin" / "python3"
 
     pip_flags = ["-qq", "--disable-pip-version-check", "--no-cache-dir"]
+    # Not used by any of agent-ui's own public skills (the corporate slide-
+    # generation feature that used to live here moved entirely to agent-deck
+    # in 0.0.11 — see python/scripts/slides/ removal). Kept anyway: a
+    # wrapping project's own scripts (e.g. agent-deck's src/scripts/slides/
+    # generate_pptx.py) reuse THIS venv rather than maintaining a second one
+    # of their own, and expect python-pptx to already be here.
     subprocess.run([str(python), "-m", "pip", "install", *pip_flags, "python-pptx"], check=True,
                    stdin=subprocess.DEVNULL)
     subprocess.run([str(python), "-m", "pip", "install", *pip_flags,
@@ -244,7 +176,6 @@ def skills_list():
             print(f"  ✗ {name}")
 
 def skills_rebuild():
-    setup_binaries()
     build_skills()
     install_skills()
     print("==> Skills rebuilt and reinstalled.")
@@ -401,8 +332,6 @@ if __name__ == "__main__":
 
     if cmd == "init":
         setup_config()
-        setup_binaries()
-        setup_templates()
         setup_venv()
         build_skills()
         install_skills()
