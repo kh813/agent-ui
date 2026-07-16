@@ -159,85 +159,96 @@ fn find_dev_project_root(mut path: PathBuf) -> Option<PathBuf> {
     None
 }
 
-pub(crate) fn resolve_project_root(mut path: PathBuf) -> PathBuf {
-    if is_development_mode(&path) {
-        if let Some(dev_root) = find_dev_project_root(path.clone()) {
-            return dev_root;
-        }
-    }
-
-    // On macOS, traverse up to get outside of the .app bundle and wrapper folder
-    #[cfg(target_os = "macos")]
-    {
-        // Traverse up 5 times:
-        // 1. Contents/MacOS/agent-ui -> Contents/MacOS
-        // 2. Contents/MacOS -> Contents
-        // 3. Contents -> agent-ui.app
-        // 4. agent-ui.app -> app/ (wrapper folder)
-        // 5. app/ -> actual project root
-        for _ in 0..5 {
-            if let Some(parent) = path.parent() {
-                path = parent.to_path_buf();
-            }
-        }
-        return path;
-    }
-
-    // On Windows/Linux, traverse up to get outside of the app/ wrapper folder
-    #[cfg(not(target_os = "macos"))]
-    {
-        // exe is placed in <project_root>/app/agent-ui.exe -> traverse up twice
-        if let Some(parent) = path.parent().and_then(|p| p.parent()) {
-            return parent.to_path_buf();
-        }
-        if let Some(parent) = path.parent() {
-            return parent.to_path_buf();
-        }
-        path
-    }
-}
-
-// Resolve the directory containing the top-level executable — the `app/`
-// wrapper folder produced by a parent project's installer (e.g. agent-deck's
-// install_agent_ui.py places agent-ui.app/agent-ui.exe directly inside it),
-// NOT the project root one level further up that resolve_project_root
-// returns. This is where a sibling `./bin/<agent>` portable install lives
-// (agent.rs's detect_agent_internal step 0), which for a macOS .app bundle is
-// NOT simply the raw binary's own parent directory (Contents/MacOS/) — that
-// naive computation was the bug this function fixes.
-pub(crate) fn resolve_app_bundle_dir(mut path: PathBuf) -> PathBuf {
-    if is_development_mode(&path) {
-        if let Some(dev_root) = find_dev_project_root(path.clone()) {
-            return dev_root;
-        }
-    }
-
+// Peels the OS-specific bundle/exe structure down to the immediate
+// container directory, then reports whether that container is an `app/`
+// wrapper folder (the old layout: a parent project's installer, e.g.
+// agent-deck's install_agent_ui.py, placed agent-ui.app/agent-ui.exe
+// directly inside app/, one level below the real project root) or the
+// project root itself (the newer layout: the bundle/exe sits directly at
+// the project root, with supporting binaries/scripts/venv as an `app/`
+// sibling rather than a container). Both resolve_project_root and
+// resolve_app_bundle_dir need this same peel, differing only in what they
+// return once they know which layout they're looking at — see 2026-07-16's
+// fix for agent-deck's root-declutter request (exe/.app moved out of app/
+// to the project root; app/ kept as the sibling holding bin/, venv, etc.).
+fn peel_to_container(mut path: PathBuf) -> (PathBuf, bool) {
     #[cfg(target_os = "macos")]
     {
         // Traverse up 4 times to get from the raw Mach-O binary out to the
-        // folder containing the .app bundle itself (see resolve_project_root's
-        // step-by-step breakdown above — this stops one step earlier, at
-        // step 4 rather than step 5):
+        // folder containing the .app bundle itself:
         // 1. Contents/MacOS/agent-ui -> Contents/MacOS
         // 2. Contents/MacOS -> Contents
         // 3. Contents -> agent-ui.app
-        // 4. agent-ui.app -> app/ (wrapper folder — what we want)
+        // 4. agent-ui.app -> container (either an app/ wrapper, or the
+        //    project root itself if the bundle sits directly there)
         for _ in 0..4 {
             if let Some(parent) = path.parent() {
                 path = parent.to_path_buf();
             }
         }
-        return path;
     }
 
-    // On Windows/Linux there's no bundle to unwrap: the exe already sits
-    // directly in the wrapper folder, so this is just its parent directory.
     #[cfg(not(target_os = "macos"))]
     {
+        // exe's immediate parent is either an app/ wrapper, or the project
+        // root itself if the exe sits directly there.
         if let Some(parent) = path.parent() {
-            return parent.to_path_buf();
+            path = parent.to_path_buf();
         }
-        path
+    }
+
+    let is_app_wrapper = path
+        .file_name()
+        .map(|name| name == "app")
+        .unwrap_or(false);
+    (path, is_app_wrapper)
+}
+
+pub(crate) fn resolve_project_root(path: PathBuf) -> PathBuf {
+    if is_development_mode(&path) {
+        if let Some(dev_root) = find_dev_project_root(path.clone()) {
+            return dev_root;
+        }
+    }
+
+    let (container, is_app_wrapper) = peel_to_container(path);
+    if is_app_wrapper {
+        // Old layout: container IS app/, so the project root is one more
+        // level up.
+        container
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or(container)
+    } else {
+        // New layout: the bundle/exe sits directly at the project root, so
+        // the container we already peeled down to IS the project root.
+        container
+    }
+}
+
+// Resolve the directory holding supporting binaries/scripts (bin/, the
+// bundled Python runtime, venv, etc.) — NOT the project root one level
+// further up that resolve_project_root returns in the old layout, nor the
+// same directory as the exe/bundle itself in the new layout. This is where
+// a sibling `./bin/<agent>` portable install lives (agent.rs's
+// detect_agent_internal step 0), which for a macOS .app bundle is NOT simply
+// the raw binary's own parent directory (Contents/MacOS/) — that naive
+// computation was the bug this function originally fixed.
+pub(crate) fn resolve_app_bundle_dir(path: PathBuf) -> PathBuf {
+    if is_development_mode(&path) {
+        if let Some(dev_root) = find_dev_project_root(path.clone()) {
+            return dev_root;
+        }
+    }
+
+    let (container, is_app_wrapper) = peel_to_container(path);
+    if is_app_wrapper {
+        // Old layout: container already IS the app/ wrapper we want.
+        container
+    } else {
+        // New layout: the bundle/exe sits at the project root, so the
+        // supporting-files directory is the app/ sibling next to it.
+        container.join("app")
     }
 }
 
@@ -655,6 +666,8 @@ mod tests {
 
     #[test]
     fn test_resolve_project_root_hierarchy() {
+        // Old layout: a parent project's installer (e.g. agent-deck's
+        // install_agent_ui.py) placed the bundle/exe inside an app/ wrapper.
         #[cfg(target_os = "macos")]
         {
             let mock_exe = PathBuf::from("/Users/test/agent-deck/app/agent-ui.app/Contents/MacOS/agent-ui");
@@ -671,7 +684,37 @@ mod tests {
                 PathBuf::from("/home/test/agent-deck/app/agent-ui.exe")
             };
             let resolved = resolve_project_root(mock_exe.clone());
-            
+
+            let expected = if cfg!(target_os = "windows") {
+                PathBuf::from("C:\\Users\\test\\agent-deck")
+            } else {
+                PathBuf::from("/home/test/agent-deck")
+            };
+            assert_eq!(resolved, expected);
+        }
+    }
+
+    #[test]
+    fn test_resolve_project_root_direct_at_root() {
+        // New layout (2026-07-16): the bundle/exe sits directly at the
+        // project root, with supporting binaries/scripts/venv under an app/
+        // sibling instead of app/ being the bundle's own container.
+        #[cfg(target_os = "macos")]
+        {
+            let mock_exe = PathBuf::from("/Users/test/agent-deck/agent-deck.app/Contents/MacOS/agent-ui");
+            let resolved = resolve_project_root(mock_exe);
+            assert_eq!(resolved, PathBuf::from("/Users/test/agent-deck"));
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let mock_exe = if cfg!(target_os = "windows") {
+                PathBuf::from("C:\\Users\\test\\agent-deck\\agent-deck.exe")
+            } else {
+                PathBuf::from("/home/test/agent-deck/agent-deck.exe")
+            };
+            let resolved = resolve_project_root(mock_exe);
+
             let expected = if cfg!(target_os = "windows") {
                 PathBuf::from("C:\\Users\\test\\agent-deck")
             } else {
@@ -683,6 +726,7 @@ mod tests {
 
     #[test]
     fn test_resolve_app_bundle_dir_hierarchy() {
+        // Old layout: app/ is the bundle's own container.
         #[cfg(target_os = "macos")]
         {
             let mock_exe = PathBuf::from("/Users/test/agent-deck/app/agent-ui.app/Contents/MacOS/agent-ui");
@@ -698,6 +742,36 @@ mod tests {
                 PathBuf::from("C:\\Users\\test\\agent-deck\\app\\agent-ui.exe")
             } else {
                 PathBuf::from("/home/test/agent-deck/app/agent-ui.exe")
+            };
+            let resolved = resolve_app_bundle_dir(mock_exe);
+
+            let expected = if cfg!(target_os = "windows") {
+                PathBuf::from("C:\\Users\\test\\agent-deck\\app")
+            } else {
+                PathBuf::from("/home/test/agent-deck/app")
+            };
+            assert_eq!(resolved, expected);
+        }
+    }
+
+    #[test]
+    fn test_resolve_app_bundle_dir_direct_at_root() {
+        // New layout (2026-07-16): app/ is a SIBLING of the bundle/exe, not
+        // its container — resolve_app_bundle_dir must still point at app/,
+        // now by appending it rather than stopping one level short.
+        #[cfg(target_os = "macos")]
+        {
+            let mock_exe = PathBuf::from("/Users/test/agent-deck/agent-deck.app/Contents/MacOS/agent-ui");
+            let resolved = resolve_app_bundle_dir(mock_exe);
+            assert_eq!(resolved, PathBuf::from("/Users/test/agent-deck/app"));
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let mock_exe = if cfg!(target_os = "windows") {
+                PathBuf::from("C:\\Users\\test\\agent-deck\\agent-deck.exe")
+            } else {
+                PathBuf::from("/home/test/agent-deck/agent-deck.exe")
             };
             let resolved = resolve_app_bundle_dir(mock_exe);
 
