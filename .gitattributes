@@ -11,3 +11,8 @@
 # confirmed for real in v0.0.9: build-skills.sh shipped CRLF to Mac users
 # and broke their first-launch bootstrap.
 *.sh   text  eol=lf
+
+# messages/*.txt are read via `type` from preflight.bat (2026-07-21) —
+# CRLF keeps them consistent with the .bat convention above, though `type`
+# itself isn't sensitive to this the way cmd.exe's own parser is.
+messages/*.txt  text  eol=crlf
