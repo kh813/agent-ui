@@ -61,7 +61,7 @@ def setup_venv():
         pip    = venv_dir / "bin" / "pip"
         python = venv_dir / "bin" / "python3"
 
-    pip_flags = ["-qq", "--disable-pip-version-check", "--no-cache-dir"]
+    pip_flags = ["-qq", "--disable-pip-version-check", "--no-cache-dir", "--no-warn-script-location"]
     # Not used by any of agent-deck's own public skills (the corporate slide-
     # generation feature that used to live here moved entirely to agent-deck
     # in 0.0.11 — see python/scripts/slides/ removal). Kept anyway: a

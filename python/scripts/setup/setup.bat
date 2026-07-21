@@ -94,7 +94,7 @@ if exist "venv\Scripts\activate.bat" (
         del "tmp\get-pip.py" >nul 2>&1
     )
     rem Use virtualenv to create a proper venv (embedded Python does not support python -m venv)
-    "App\python\python.exe" -m pip install -q --disable-pip-version-check --no-cache-dir virtualenv
+    "App\python\python.exe" -m pip install -q --disable-pip-version-check --no-cache-dir --no-warn-script-location virtualenv
     "App\python\python.exe" -m virtualenv venv -q
     if errorlevel 1 (
         echo [WARN] venv creation failed. Creating marker directory.
@@ -103,7 +103,7 @@ if exist "venv\Scripts\activate.bat" (
     )
     rem Install all packages into the venv
     echo   Installing packages...
-    venv\Scripts\python.exe -m pip install -q --disable-pip-version-check --no-cache-dir ^
+    venv\Scripts\python.exe -m pip install -q --disable-pip-version-check --no-cache-dir --no-warn-script-location ^
         -r python\scripts\automation\requirements.txt ^
         google-auth google-auth-oauthlib google-api-python-client ^
         python-pptx markitdown pywin32
@@ -120,7 +120,7 @@ if exist "venv\Scripts\activate.bat" (
         mkdir "venv" 2>nul
     ) else (
         echo   Installing packages...
-        venv\Scripts\python.exe -m pip install -q --disable-pip-version-check --no-cache-dir ^
+        venv\Scripts\python.exe -m pip install -q --disable-pip-version-check --no-cache-dir --no-warn-script-location ^
             -r python\scripts\automation\requirements.txt ^
             google-auth google-auth-oauthlib google-api-python-client ^
             python-pptx markitdown pywin32
