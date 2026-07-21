@@ -21,7 +21,7 @@
       },
       "windows": {
         "command": "powershell.exe",
-        "args": ["-Command", "if (!(Test-Path 'app/bin')) { New-Item -ItemType Directory 'app/bin' }; $env:BINDIR='.\\app\\bin'; iex (iwr -useb https://antigravity.google.com/install.ps1)"]
+        "args": ["-Command", "if (!(Test-Path 'app/bin')) { New-Item -ItemType Directory 'app/bin' }; $env:BINDIR='.\\app\\bin'; Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; $tmp = Join-Path $env:TEMP ('antigravity-install-' + [guid]::NewGuid().ToString() + '.ps1'); Invoke-WebRequest -UseBasicParsing -Uri https://antigravity.google.com/install.ps1 -OutFile $tmp; try { & $tmp } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }"]
       }
     },
     "update": {
