@@ -47,10 +47,17 @@ TOKEN_PATH = Path.home() / ".gemini" / "agent_deck_library_token.json"
 # Paths (relative to PROJECT_ROOT) to include in the backup zip -- exactly
 # the gitignored, org-private files a fresh clone of this repo won't have,
 # but that are needed to keep doing admin/release work.
+#
+# python/skills-personal/ is included because it's the sole home for
+# org-specific skill SOURCE (SKILL.md + bundled scripts) once authoring
+# moves out of a git-tracked directory -- the Drive skill-catalog only
+# preserves the last-*published* version of each skill, so unpublished
+# local edits have no other backup at all.
 _BACKUP_GLOBS = [
     "config.toml",
     "client_secret_*.json",
     "docs/**/*",
+    "python/skills-personal/**/*",
 ]
 
 
