@@ -6,9 +6,12 @@
 #
 # Invoked non-interactively (agent-deck captures stdout/stderr, no TTY), so
 # this must never block on user input — setup.py's own _prompt() helper
-# already degrades to an empty answer when stdin isn't attached.
+# degrades to an empty answer when AGENT_DECK_NONINTERACTIVE is set below
+# (confirmed for real: relying on sys.stdin.isatty() alone was not a
+# reliable enough signal on Windows and still hung indefinitely).
 set -e
 cd "$(dirname "$0")"
+export AGENT_DECK_NONINTERACTIVE=1
 
 echo "Checking configuration..."
 python3 python/scripts/setup/setup.py config

@@ -299,26 +299,27 @@ def skills_enable(skill_name):
 # ── setup config ──────────────────────────────────────────────
 
 def _prompt(msg):
-    """input() that degrades to an empty answer when stdin isn't interactive.
+    """input() that degrades to an empty answer when running non-interactively.
 
-    setup_config() can run non-interactively (e.g. invoked by agent-deck's
-    pre_launch_command via preflight.sh/.bat, with no attached stdin), where
-    a bare input() would raise EOFError and crash the whole preflight step.
-    Missing credentials/email are already handled as "not yet configured"
-    (re-prompted next time this runs from an interactive terminal), so
-    treating a non-interactive stdin the same as an empty answer is safe
-    here.
+    setup_config() can run non-interactively (invoked by agent-deck's
+    pre_launch_command via preflight.sh/.bat, with no real user attached),
+    where a bare input() would either raise EOFError or, confirmed for real
+    on Windows, block forever (Tauri's pre_launch_command there apparently
+    leaves stdin in a state where sys.stdin.isatty() is NOT a reliable
+    signal either -- an isatty()-based guard alone still hung indefinitely
+    on a genuinely fresh Windows install). Missing credentials/email are
+    already handled as "not yet configured" (re-prompted next time this
+    runs interactively), so degrading to an empty answer is safe here.
 
-    Checking isatty() up front (rather than relying solely on catching
-    EOFError from a blocking input() call) matters on Windows: confirmed
-    for real that Tauri's pre_launch_command there leaves stdin open but
-    with no writer, rather than closed/EOF-at-first-read the way it is on
-    Mac -- input() then blocks forever waiting for a line that will never
-    arrive, hanging first-time setup indefinitely instead of gracefully
-    skipping. isatty() is false in both cases, so checking it first behaves
-    correctly on either platform without needing to know which stdin-wiring
-    quirk applies.
+    The one deterministic signal is AGENT_DECK_NONINTERACTIVE, which
+    preflight.sh/.bat export before calling `setup.py config` -- this
+    doesn't depend on guessing how any given platform/shell wires up
+    stdin for a spawned child process. isatty()/EOFError remain as a
+    fallback for other invocation contexts (e.g. running this file
+    directly without that env var set).
     """
+    if os.environ.get("AGENT_DECK_NONINTERACTIVE"):
+        return ""
     if not sys.stdin.isatty():
         return ""
     try:

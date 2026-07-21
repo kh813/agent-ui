@@ -23,6 +23,12 @@ rem statements instead of a multi-line ( ... ) block. Do not reintroduce
 rem either pattern without testing the FULL script on a real Windows
 rem machine.
 cd /d "%~dp0"
+rem Tells setup.py's _prompt() helper to skip straight to an empty answer
+rem instead of trying to detect non-interactivity itself -- confirmed for
+rem real that relying on sys.stdin.isatty() alone still hung indefinitely
+rem on a genuinely fresh Windows install, waiting forever at the email
+rem prompt during first-time setup.
+set "AGENT_DECK_NONINTERACTIVE=1"
 
 rem If venv\ doesn't exist yet, run the full Windows setup first. setup.bat
 rem is a self-contained batch/PowerShell script that needs no pre-existing
