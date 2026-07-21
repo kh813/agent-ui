@@ -1,19 +1,26 @@
 """
-Regression test for Windows stdout/stderr UTF-8 reconfiguration in setup.py.
+Regression test for Windows stdout/stderr UTF-8 reconfiguration.
 
 The bug: on Windows, piping a script's stdout through agy.exe's pty makes
-Python fall back to the CP1252 codepage, corrupting Japanese output (or
-raising UnicodeEncodeError). Confirmed for real: a user's /update ->
-preflight.bat -> `setup.py config` step printed mojibake instead of the
-intended Japanese prompts (setup_config() prints several).
+Python fall back to the CP932/CP1252 codepage, corrupting Japanese output
+(or raising UnicodeEncodeError). Confirmed for real twice: (1) a user's
+/update -> preflight.bat -> `setup.py config` step printed mojibake instead
+of the intended Japanese prompts; (2) later, a user's launch-time catalog
+sync crashed outright with `UnicodeEncodeError: 'cp932' codec can't encode
+character '—'` (an em-dash) in auth.py's run_auth_flow() print, and
+then crashed AGAIN in skills_catalog.py's own [WARN] handler (which embeds
+the caught exception's message, itself containing that same em-dash) —
+turning a should-be-graceful "skip this launch, retry next time" into a
+hard traceback.
 
-Known wider gap (2026-07-16, not yet closed): scanning this repo for
+Known wider gap (2026-07-16, not fully closed): scanning this repo for
 Japanese print() output turned up over a dozen other scripts with the same
-exposure (skills_catalog.py, auth.py, every python/scripts/automation/*.py
-and python/scripts/tools/*.py) — only setup.py is fixed and covered here so
-far, since it's the one confirmed to have broken for a real user. Extending
-this same guard (and this test) to the rest is tracked as follow-up work,
-not rushed in alongside an urgent single-file fix.
+exposure. setup.py, auth.py, and skills_catalog.py are fixed and covered
+here so far, since those are the ones confirmed to have broken for a real
+user. Every python/scripts/automation/*.py and python/scripts/tools/*.py
+script still has the same exposure — extending this same guard (and this
+test) to the rest is tracked as follow-up work, not rushed in alongside
+each urgent single-file fix.
 
 Run:
   pytest python/tests/test_windows_utf8.py -v
@@ -48,3 +55,9 @@ class TestWindowsUtf8Reconfigure:
 
     def test_setup_py(self):
         self._check("python/scripts/setup/setup.py")
+
+    def test_auth_py(self):
+        self._check("python/scripts/auth.py")
+
+    def test_skills_catalog_py(self):
+        self._check("python/scripts/setup/skills_catalog.py")

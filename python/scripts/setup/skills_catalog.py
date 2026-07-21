@@ -42,6 +42,19 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+# Windows pipe (agy.exe's pty etc.) makes stdout fall back to CP932/CP1252,
+# crashing outright (UnicodeEncodeError) on this file's Japanese text and
+# em-dashes. Confirmed for real: cmd_sync()'s own [WARN] print (which embeds
+# a caught exception's message, itself often containing an em-dash from
+# auth.py's run_auth_flow) crashed a second time for the same reason,
+# turning a should-be-graceful "skip this launch" into a hard traceback.
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
+
 # Re-exec with venv Python if google packages are not available.
 def _reexec_with_venv():
     try:

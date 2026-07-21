@@ -1,7 +1,20 @@
 """Shared OAuth helper: opens Chrome for the Google consent screen."""
 import platform
 import subprocess
+import sys
 import webbrowser
+
+# Windows pipe (agy.exe's pty etc.) makes stdout fall back to CP932/CP1252,
+# crashing outright (UnicodeEncodeError) on this file's Japanese text and
+# em-dash. Confirmed for real: run_auth_flow's own print crashed, and then
+# the caller's exception-handler print (which embeds that exception's own
+# message) crashed a second time for the same reason.
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
 
 try:
     from scripts.logger import get_logger as _get_logger
