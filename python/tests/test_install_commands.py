@@ -41,6 +41,11 @@ def _macos_install_args() -> str:
     return " ".join(data["agy"]["install"]["macos"]["args"])
 
 
+def _detect_paths() -> dict:
+    data = json.loads(INSTALL_COMMANDS_PATH.read_text())
+    return data["agy"]["detect_paths"]
+
+
 class TestWindowsInstallCommandAvoidsFilelessExecution:
     def test_is_valid_json(self):
         json.loads(INSTALL_COMMANDS_PATH.read_text())
@@ -116,4 +121,58 @@ class TestInstallUrlsPointAtTheRealInstallerHost:
             "fetch from antigravity.google/cli/install.ps1 (confirmed to "
             "serve a real script) -- not antigravity.google.com/install.ps1 "
             "(confirmed to serve the website's HTML shell instead)."
+        )
+
+
+class TestDetectPathsMatchWhereTheInstallerActuallyPutsIt:
+    """Regression guard for a third bug found 2026-07-21: our install
+    commands set a $BINDIR / -Command "app/bin" override that both
+    install.sh and install.ps1 silently ignore (confirmed by running the
+    real installer end to end) -- they only honor a --dir/-d flag, and
+    default to $HOME/.local/bin (macOS) / $env:LOCALAPPDATA\\agy\\bin
+    (Windows) otherwise. Since neither script was actually being told
+    -dir, every real install landed at that per-user default -- which
+    was NOT in this file's own detect_paths list, and (confirmed via
+    /etc/paths + /etc/paths.d on a real Mac) is also not on the minimal
+    PATH a GUI-launched app inherits, so detect_agent_internal's `which`
+    fallback can't find it either. Net effect: install could succeed at
+    the OS level while agent-deck kept reporting it as not installed.
+    Both installers' default locations require no admin/elevation, so
+    the fix is to just point detect_paths at reality rather than fight
+    the installers' own default (a custom --dir would need to keep being
+    re-verified against upstream's own defaults every time they change,
+    exactly as happened to the dead $BINDIR override this replaces)."""
+
+    def test_macos_detects_the_installers_real_default_location(self):
+        paths = _detect_paths()["macos"]
+        assert "$HOME/.local/bin/agy" in paths, (
+            "install_commands.json's macOS detect_paths is missing "
+            "$HOME/.local/bin/agy -- install.sh's actual default install "
+            "location (confirmed by running it for real)."
+        )
+
+    def test_windows_detects_the_installers_real_default_location(self):
+        paths = _detect_paths()["windows"]
+        assert "$USERPROFILE\\AppData\\Local\\agy\\bin\\agy.exe" in paths, (
+            "install_commands.json's Windows detect_paths is missing "
+            "$USERPROFILE\\AppData\\Local\\agy\\bin\\agy.exe -- install.ps1's "
+            "actual default install location ($env:LOCALAPPDATA\\agy\\bin)."
+        )
+
+    def test_macos_install_command_no_longer_sets_the_ignored_bindir_override(self):
+        args = _macos_install_args()
+        assert "BINDIR" not in args and "app/bin" not in args, (
+            "install_commands.json's macOS install command still sets a "
+            "$BINDIR override or creates app/bin -- confirmed for real that "
+            "install.sh ignores $BINDIR entirely (it only reads a --dir/-d "
+            "flag), so this is dead, misleading configuration."
+        )
+
+    def test_windows_install_command_no_longer_sets_the_ignored_bindir_override(self):
+        args = _windows_install_args()
+        assert "BINDIR" not in args and "app\\bin" not in args, (
+            "install_commands.json's Windows install command still sets a "
+            "$env:BINDIR override or creates app\\bin -- confirmed for real "
+            "that install.ps1 ignores $env:BINDIR entirely (it only reads a "
+            "-d/--dir flag), so this is dead, misleading configuration."
         )
