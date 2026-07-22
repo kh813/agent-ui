@@ -26,7 +26,7 @@ except ImportError:
 _log = _get_logger("auth")
 
 
-def run_auth_flow(flow, port=0, login_hint=None, timeout_seconds=None):
+def run_auth_flow(flow, port=0, login_hint=None, timeout_seconds=None, purpose=None):
     """Run OAuth local server and open Chrome for the consent screen.
 
     timeout_seconds: passed through to run_local_server. Set this when the
@@ -36,10 +36,21 @@ def run_auth_flow(flow, port=0, login_hint=None, timeout_seconds=None):
     otherwise wait for a callback that never comes and hang the whole
     session start). On timeout run_local_server raises, which callers
     treat as "skipped this launch, retry next time".
+
+    purpose: short label identifying what this sign-in is for (e.g.
+    "スキルカタログ / Skill catalog"), printed alongside the generic prompt
+    below. This flow (this repo's own Google Drive OAuth client) and agy's
+    own separate sign-in can both prompt in quick succession on first
+    launch — confirmed for real that a user reasonably read the second
+    prompt as a duplicate/bug without a label distinguishing which is
+    which. Callers whose auth isn't launch-adjacent (e.g. a skill the user
+    explicitly invoked) can omit this.
     """
-    _log.info("OAuth flow starting login_hint=%s", login_hint or "(none)")
-    print("  Chrome が開きます。会社のGoogleアカウントでログインしてください。")
-    print("  Chrome will open — log in with your company Google account.")
+    _log.info("OAuth flow starting login_hint=%s purpose=%s", login_hint or "(none)", purpose or "(none)")
+    suffix_ja = f"（{purpose}）" if purpose else ""
+    suffix_en = f" ({purpose})" if purpose else ""
+    print(f"  Chrome が開きます{suffix_ja}。会社のGoogleアカウントでログインしてください。")
+    print(f"  Chrome will open{suffix_en} — log in with your company Google account.")
 
     pf = platform.system()
 

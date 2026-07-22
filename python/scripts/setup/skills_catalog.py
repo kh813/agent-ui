@@ -167,7 +167,8 @@ def _get_credentials(timeout_seconds=None):
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
-            creds = run_auth_flow(flow, timeout_seconds=timeout_seconds)
+            creds = run_auth_flow(flow, timeout_seconds=timeout_seconds,
+                                   purpose="スキルカタログ / Skill catalog")
         TOKEN_PATH.write_text(creds.to_json())
 
     return creds
