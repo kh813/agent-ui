@@ -16,7 +16,7 @@ This directory serves a **dual role** in a single working tree: it's the Git-tra
 | 区分 / Category | 公開範囲 / Visibility | 内容 / Contents |
 |---|---|---|
 | Git 管理下 / Git-tracked | 公開（GitHub） / Public | このリポジトリのソースコード一式。誰でも clone・fork でき、誰でも GitHub Releases から配布 ZIP を直接ダウンロードできる。**`docs/admin_guide.md`・`docs/user_guide.md` も、機密情報を含まない汎用的な技術リファレンス／利用ガイドとしてここに含まれる。** |
-| `.gitignore` 対象 / Gitignored | 組織限定 / Org-private | `config.toml`・`client_secret_*.json`・`docs/migration_gemini_to_antigravity.md`（完了済みの内部移行メモ）など、組織固有の値や実際の社内システム名を含むファイル。個人の PC 上にのみ存在し、GitHub には一切アップロードされない。 |
+| `.gitignore` 対象 / Gitignored | 組織限定 / Org-private | `config.toml`・`client_secret_*.json` など、組織固有の値を含むファイル。個人の PC 上にのみ存在し、GitHub には一切アップロードされない。 |
 
 **新規インストールの配布モデル / Distribution model for new installs:**
 
@@ -69,8 +69,7 @@ agent-deck/
 ├── client_secret_*.json         # OAuth クライアントシークレット（git 除外）
 ├── docs/
 │   ├── admin_guide.md            # 本ドキュメント。機密情報を含まないため git 管理下（公開）
-│   ├── user_guide.md             # 利用者向けドキュメント。同じく git 管理下（公開）
-│   └── migration_gemini_to_antigravity.md   # ★完了済みの内部移行メモ（社内システム名を含むため git 除外）
+│   └── user_guide.md             # 利用者向けドキュメント。同じく git 管理下（公開）
 │
 ├── agent-deck.app / agent-deck.exe   # ダブルクリックで起動。プロジェクトルート直下（自己更新で置き換わる）
 ├── preflight.sh / preflight.bat      # 起動前フック（pre_launch_command 経由で毎回実行）
@@ -100,9 +99,9 @@ agent-deck/
 
 ## 2. スキルの仕組み / Skill System
 
-Antigravity CLI (`agy`) は `.gemini/skills/<name>/SKILL.md` からスキルを読み込みます（ディレクトリ名は歴史的経緯で `.gemini/` のまま — agy は元 Gemini CLI ベース）。各スキルは、特定のコマンドをエージェントがどう処理するかを記述した Markdown ファイルで、`/skill-name` のスラッシュコマンドで呼び出せます。
+Antigravity CLI (`agy`) は `.gemini/skills/<name>/SKILL.md` からスキルを読み込みます。各スキルは、特定のコマンドをエージェントがどう処理するかを記述した Markdown ファイルで、`/skill-name` のスラッシュコマンドで呼び出せます。
 
-Antigravity CLI (`agy`) loads skills from `.gemini/skills/<name>/SKILL.md` (the directory is still named `.gemini/` for historical reasons — agy is built on a Gemini CLI base). Each skill is a Markdown file instructing the agent how to handle a specific command, invocable via `/skill-name`.
+Antigravity CLI (`agy`) loads skills from `.gemini/skills/<name>/SKILL.md`. Each skill is a Markdown file instructing the agent how to handle a specific command, invocable via `/skill-name`.
 
 ### ビルドとインストールの流れ / Build & Install Flow
 
@@ -274,9 +273,9 @@ Node.js and Python are self-contained inside the project folder, so agent-deck i
 
 ## 4. 自己更新の流れ / Self-Update Flow
 
-Antigravity CLI 内で `/update` を実行すると、`kh813/agent-deck` の **GitHub Releases** を確認し、現在より新しいタグがあればダウンロード・置換します（公開リポジトリの `python/scripts/setup/self_update.py`）。**Google Drive は一切関与しません** — Drive ベースの旧方式は既存 --prod/--test インストールの移行専用に切り離されています（§7）。
+Antigravity CLI 内で `/update` を実行すると、`kh813/agent-deck` の **GitHub Releases** を確認し、現在より新しいタグがあればダウンロード・置換します（公開リポジトリの `python/scripts/setup/self_update.py`）。**Google Drive は一切関与しません。**
 
-Running `/update` in Antigravity CLI checks `kh813/agent-deck`'s **GitHub Releases** and downloads/replaces if a newer tag exists (`self_update.py` in the public repo). **Google Drive is not involved at all** — the Drive-based mechanism is now scoped exclusively to migrating existing --prod/--test installs (§7).
+Running `/update` in Antigravity CLI checks `kh813/agent-deck`'s **GitHub Releases** and downloads/replaces if a newer tag exists (`self_update.py` in the public repo). **Google Drive is not involved at all.**
 
 ```
 /update（Antigravity CLI 内）
@@ -318,9 +317,9 @@ This doesn't hot-swap the running process, so **a restart is required** to use t
 
 ### 修復 / Repair
 
-旧アーキテクチャの「`--repair` フラグ付き起動」は廃止されました。現行アーキテクチャでは、**毎回の起動そのものが自己修復的**です：
+**毎回の起動そのものが自己修復的**です：
 
-The old "`--repair` flag" launch mode is retired. In the current architecture, **every normal launch is itself self-healing**:
+**Every normal launch is itself self-healing**:
 
 - `preflight.sh`/`.bat` が毎回 `setup.py skills rebuild` を実行し、スキル欠損・破損を修復します。
 
@@ -360,8 +359,6 @@ cp config/config.toml.template config.toml
 
 `config/__init__.py` が `tomllib`（Python 3.11+ 標準）または `tomli`（バックポート）で `config.toml` を読み込みます。
 
-> **旧 Drive 配布方式の名残 / Holdover from the old Drive distribution mechanism:** `[drive].update_file_id` / `test_update_file_id` というキーを見かけることがありますが、現在のどのコードもこれらを読みません（自己更新は GitHub Releases ベースで Drive を使わないため）。新規に `config.toml` を作る際はこの2キーを含める必要はありません。
-
 ---
 
 ## 6. Google Cloud API の設定 / Google Cloud API Setup
@@ -377,10 +374,6 @@ cp config/config.toml.template config.toml
 | `calendar.readonly` / `tasks.readonly` | カレンダー・タスク読み取り（`gcalendar.py`） | `~/.gemini/agent_ui_calendar_token.json` |
 
 > 全ての `drive` フルスコープ利用箇所が同一のトークンファイルを共有するよう統一済みです（旧: `backup_config.py`/`restore_config.py` のみ `agent_deck_library_token.json` という別名を使っており、`skill-catalog` 等で認可済みでも別途ブラウザ認可が要求される不整合があったが解消済み）。
-
-**旧 `drive.readonly`（配布 ZIP ダウンロード用）は不要になりました** — 自己更新が GitHub Releases（認証不要の公開ダウンロード）ベースになったため。
-
-**The old `drive.readonly` scope (for distribution ZIP download) is no longer needed** — self-update is now GitHub Releases-based (an unauthenticated public download).
 
 新しい Google API を追加する場合: (1) GCP コンソールで有効化 (2) 対応スクリプトの `SCOPES` に追加 (3) 既存トークンにスコープが無ければ次回実行時に自動で再認証されます。
 
@@ -451,7 +444,7 @@ The PPTX template isn't in the distribution ZIP. Each skill's bundled `fetch_tem
 - `python/skills-personal/slide-generator/scripts/fetch_template.py` — テンプレートのダウンロード
 - `python/skills-personal/slide-generator/scripts/generate_pptx.py` — PPTX 生成（テンプレート不在時に自動ダウンロード）
 
-（2026-07-16 以降、スライド関連スクリプトは slide-generator / slide-interviewer スキルに同梱され、skill-catalog の `_default/` から配信されます。旧 `src/scripts/slides/` は廃止済みです。）
+スライド関連スクリプトは slide-generator / slide-interviewer スキルに同梱され、skill-catalog の `_default/` から配信されます。
 
 **テンプレート URL 変更時 / When the template URL changes:**
 
@@ -631,10 +624,6 @@ agent-deck は **二層のセキュリティ** でエージェントの動作範
 |---|---|
 | sentinel ファイル（`~/.gemini/agent_deck_authed`）なし | `~/.gemini/google_accounts.json` の `active` フィールドを確認 → 会社ドメインなら sentinel を作成しスキップ → 別ドメイン・未認証なら案内メッセージを表示 |
 | sentinel ファイルあり | 認証チェックをスキップ（高速起動） |
-
-> **旧記述からの訂正 / Correction from the old text:** この処理はかつて `start-agent.py` が担っていましたが、現在は公開リポジトリの `preflight.sh`/`.bat` が担っています（`app/preflight.sh` 参照）。挙動自体（sentinel ファイル方式）は変わっていません。
->
-> This used to be handled by `start-agent.py`; it's now handled by the public repo's `preflight.sh`/`.bat` (see `app/preflight.sh`). The mechanism itself (the sentinel file) hasn't changed.
 
 **sentinel のリセット（再認証を強制したい場合）:**
 ```bash
