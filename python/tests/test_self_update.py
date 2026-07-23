@@ -423,3 +423,100 @@ class TestPythonPayloadRefresh:
 
         sh = project_root / "python" / "scripts" / "setup" / "build-skills.sh"
         assert b"\r" not in sh.read_bytes()
+
+
+class _FakeDriveExecute:
+    def __init__(self, result):
+        self._result = result
+
+    def execute(self):
+        return self._result
+
+
+class _FakeDriveFiles:
+    def __init__(self, modified_time):
+        self._modified_time = modified_time
+
+    def get(self, fileId, fields, supportsAllDrives):
+        return _FakeDriveExecute({"modifiedTime": self._modified_time})
+
+    def get_media(self, fileId, supportsAllDrives):
+        return object()  # never touched -- _download_drive_media is mocked in these tests
+
+
+class _FakeDriveService:
+    def __init__(self, modified_time):
+        self._files = _FakeDriveFiles(modified_time)
+
+    def files(self):
+        return self._files
+
+
+class TestDriveChannel:
+    """The org's config-bundled Drive channel (package_release.py's own
+    upload target) -- a third source entirely, separate from both GitHub
+    channels above. Uses the Drive file's modifiedTime as its "version"
+    since there's no release tag for a single mutable file."""
+
+    def test_check_drive_reports_available_when_no_marker(self, project_root, monkeypatch):
+        monkeypatch.setattr(su, "_get_drive_service", lambda: _FakeDriveService("2026-07-23T00:00:00Z"))
+        available, installed, latest = su.check_drive("file-123")
+        assert available is True
+        assert installed == ""
+        assert latest == "2026-07-23T00:00:00Z"
+
+    def test_check_drive_reports_up_to_date_when_marker_matches(self, project_root, monkeypatch):
+        monkeypatch.setattr(su, "_get_drive_service", lambda: _FakeDriveService("2026-07-23T00:00:00Z"))
+        su._drive_marker_path(_dest_name()).write_text(
+            '{"file_id": "file-123", "modifiedTime": "2026-07-23T00:00:00Z"}'
+        )
+        available, installed, latest = su.check_drive("file-123")
+        assert available is False
+
+    def test_check_drive_ignores_marker_from_a_different_file_id(self, project_root, monkeypatch):
+        """Switching from org-test to org-prod (different Drive file IDs)
+        must not be mistaken for "already up to date" just because some
+        other file's marker happens to be sitting there."""
+        monkeypatch.setattr(su, "_get_drive_service", lambda: _FakeDriveService("2026-07-23T00:00:00Z"))
+        su._drive_marker_path(_dest_name()).write_text(
+            '{"file_id": "other-file-id", "modifiedTime": "2026-07-23T00:00:00Z"}'
+        )
+        available, installed, latest = su.check_drive("file-123")
+        assert available is True
+        assert installed == ""
+
+    def test_apply_drive_installs_and_merges_config_toml(self, project_root, monkeypatch):
+        monkeypatch.setattr(su.sys, "platform", "darwin")
+        monkeypatch.setattr(su, "_get_drive_service", lambda: _FakeDriveService("2026-07-23T00:00:00Z"))
+
+        def fake_download(service, file_id, dest_path):
+            zf_path = _make_fake_zip_for_drive(dest_path)
+            return zf_path
+
+        monkeypatch.setattr(su, "_download_drive_media", fake_download)
+
+        def fake_run(cmd, *a, **kw):
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(su.subprocess, "run", fake_run)
+
+        su.apply_drive("file-123")
+
+        dest = project_root / _dest_name()
+        assert dest.exists()
+        assert (project_root / "config.toml").read_text() == "[oauth]\nclient_id = \"org-real-id\"\n"
+        marker = json.loads(su._drive_marker_path(_dest_name()).read_text())
+        assert marker == {"file_id": "file-123", "modifiedTime": "2026-07-23T00:00:00Z"}
+
+
+def _make_fake_zip_for_drive(zip_path: Path) -> None:
+    """Matches package_release.py's own flat layout: agent-deck.app/.exe,
+    python/, and config.toml all as zip-root siblings."""
+    name = _dest_name()
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        if sys.platform == "win32":
+            zf.writestr(name, b"fake exe content")
+        else:
+            zf.writestr(f"{name}/Contents/MacOS/agent-deck", b"#!/bin/sh\necho hi\n")
+        zf.writestr("python/skills/translator/SKILL.md", b"---\nname: translator\n---\n")
+        zf.writestr("config.toml", b'[oauth]\nclient_id = "org-real-id"\n')

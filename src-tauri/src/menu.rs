@@ -2,10 +2,13 @@ use std::sync::Mutex;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, Submenu, HELP_SUBMENU_ID};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::self_update::org_release_configured;
+
 const THEME_MENU_ID_PREFIX: &str = "theme:";
 const AUTO_CHECK_UPDATE_MENU_ID: &str = "settings:auto-check-update";
-const CHECK_SELF_UPDATE_MENU_ID: &str = "settings:check-self-update";
-const CHECK_SELF_UPDATE_TEST_MENU_ID: &str = "settings:check-self-update-test";
+const UPDATE_GITHUB_MENU_ID: &str = "update:github";
+const UPDATE_ORG_PROD_MENU_ID: &str = "update:org-prod";
+const UPDATE_ORG_TEST_MENU_ID: &str = "update:org-test";
 
 // Keep in sync with the theme ids/names in src/utils/themes.ts
 const THEMES: &[(&str, &str)] = &[
@@ -57,40 +60,48 @@ pub fn build_menu(
         initial_auto_check_update,
         None::<&str>,
     )?;
-    // Distinct from the toggle above: that one is about auto-checking agy
-    // (the Antigravity CLI engine) on launch. This is an on-demand action
-    // for agent-deck's own GitHub-Releases-based self-update (previously
-    // only reachable via the now-retired `/update` chat skill).
-    let check_self_update_item = MenuItem::with_id(
-        handle,
-        CHECK_SELF_UPDATE_MENU_ID,
-        "Check for agent-deck Updates...",
-        true,
-        None::<&str>,
-    )?;
-    // Test channel: latest GitHub pre-release (see release.yml's "determine
-    // release channel" step and self_update.py's --test flag) instead of
-    // /releases/latest. Lets someone flip back and forth between a
-    // pre-release build and production without touching a terminal.
-    let check_self_update_test_item = MenuItem::with_id(
-        handle,
-        CHECK_SELF_UPDATE_TEST_MENU_ID,
-        "Check for agent-deck Updates (Test)...",
-        true,
-        None::<&str>,
-    )?;
-    let settings_submenu = Submenu::with_items(
-        handle,
-        "Settings",
-        true,
-        &[&auto_check_update_item, &check_self_update_item, &check_self_update_test_item],
-    )?;
+    let settings_submenu = Submenu::with_items(handle, "Settings", true, &[&auto_check_update_item])?;
 
-    // Place Theme/Settings just before Help, matching where most apps put extra top-level menus.
+    // Update submenu: an org-managed install (config.toml's [drive]
+    // org_release_prod_file_id / org_release_test_file_id set -- see
+    // package_release.py) should use its own controlled Drive channel
+    // rather than bypass it via raw GitHub, so the plain GitHub item is
+    // hidden whenever either org item is available. A plain OSS install
+    // with no org config.toml at all gets just the GitHub item, which
+    // works even fresh out of a ZIP with no config.toml present yet.
+    let (org_prod_configured, org_test_configured) = org_release_configured();
+    let update_submenu = if org_prod_configured || org_test_configured {
+        let mut items: Vec<MenuItem<tauri::Wry>> = Vec::new();
+        if org_prod_configured {
+            items.push(MenuItem::with_id(
+                handle, UPDATE_ORG_PROD_MENU_ID, "Update to Org Latest...", true, None::<&str>,
+            )?);
+        }
+        if org_test_configured {
+            items.push(MenuItem::with_id(
+                handle, UPDATE_ORG_TEST_MENU_ID, "Update to Org Test...", true, None::<&str>,
+            )?);
+        }
+        let refs: Vec<&dyn IsMenuItem<tauri::Wry>> =
+            items.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
+        Submenu::with_items(handle, "Update", true, &refs)?
+    } else {
+        let github_item = MenuItem::with_id(
+            handle, UPDATE_GITHUB_MENU_ID, "Update to GitHub Latest...", true, None::<&str>,
+        )?;
+        Submenu::with_items(handle, "Update", true, &[&github_item])?
+    };
+
+    // Place Theme/Update/Settings just before Help, matching where most apps put extra top-level menus.
     let help_index = menu.items()?.iter().position(|item| item.id() == HELP_SUBMENU_ID);
     match help_index {
         Some(index) => menu.insert(&theme_submenu, index)?,
         None => menu.append(&theme_submenu)?,
+    }
+    let help_index = menu.items()?.iter().position(|item| item.id() == HELP_SUBMENU_ID);
+    match help_index {
+        Some(index) => menu.insert(&update_submenu, index)?,
+        None => menu.append(&update_submenu)?,
     }
     let help_index = menu.items()?.iter().position(|item| item.id() == HELP_SUBMENU_ID);
     match help_index {
@@ -139,13 +150,18 @@ pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         return;
     }
 
-    if id == CHECK_SELF_UPDATE_MENU_ID {
-        let _ = app.emit("check-self-update-requested", "prod");
+    if id == UPDATE_GITHUB_MENU_ID {
+        let _ = app.emit("check-self-update-requested", "github");
         return;
     }
 
-    if id == CHECK_SELF_UPDATE_TEST_MENU_ID {
-        let _ = app.emit("check-self-update-requested", "test");
+    if id == UPDATE_ORG_PROD_MENU_ID {
+        let _ = app.emit("check-self-update-requested", "org-prod");
+        return;
+    }
+
+    if id == UPDATE_ORG_TEST_MENU_ID {
+        let _ = app.emit("check-self-update-requested", "org-test");
     }
 }
 

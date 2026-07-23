@@ -53,11 +53,13 @@ running binary's open file — it replaces it on disk and asks the user to
 relaunch. It does not attempt a hot in-place self-replace.
 
 Usage:
-  python3 self_update.py check              # print whether an update is available (prod channel)
-  python3 self_update.py check --json       # same, as a single JSON line (for callers like the Tauri menu)
-  python3 self_update.py apply              # download and install the latest release (prod channel)
-  python3 self_update.py check --test       # same, but against the latest pre-release
-  python3 self_update.py apply --test       # download and install the latest pre-release
+  python3 self_update.py check                          # GitHub prod channel (/releases/latest)
+  python3 self_update.py check --json                   # same, as a single JSON line (for the Tauri menu)
+  python3 self_update.py apply                          # download and install the latest release
+  python3 self_update.py check --test                   # GitHub's newest pre-release instead
+  python3 self_update.py apply --test
+  python3 self_update.py check --drive-file-id ID        # org's config-bundled Drive build instead
+  python3 self_update.py apply --drive-file-id ID        # (see package_release.py for what builds this)
 
 Channels: "prod" (default) is GitHub's /releases/latest, which by GitHub's
 own definition excludes pre-releases. "--test" walks the plain /releases
@@ -66,8 +68,17 @@ list for the newest release tagged as a pre-release (see release.yml's
 tag-equality check means switching channels back and forth just works,
 including "downgrading" from a test build's tag back to the current prod
 tag.
+
+--drive-file-id is a separate, third source entirely: a specific Google
+Drive file (this org's config-bundled internal distribution ZIP, built
+and kept up to date by package_release.py) rather than anything on
+GitHub. This is the only path in this file that needs Google's OAuth
+libraries (see _reexec_with_venv_for_drive_mode) -- the GitHub paths
+above stay pure-stdlib on purpose, so this script works even before a
+venv exists.
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -192,6 +203,70 @@ def _install_python_payload(staging: Path) -> None:
         shutil.move(str(personal_backup), str(dest_python / "skills-personal"))
 
 
+def _verify_mac_signature(new_dest: Path, label: str) -> None:
+    """Defensive re-sign + verify over a freshly extracted mac bundle (an
+    upstream CI signing bug once shipped one whose resource seal predated
+    Contents/Resources -- harmless no-op on correctly-signed builds).
+
+    Gate: confirmed for real (2026-07-23) that an invalid signature here
+    means macOS refuses to even launch the app ("is damaged and can't be
+    opened", error -47, with NO user override available) -- materially
+    worse than the normal "unidentified developer" Gatekeeper prompt, which
+    DOES offer an Open Anyway override once the signature itself verifies.
+    Better to keep the current, working install than swap in a bundle that
+    can never launch at all."""
+    subprocess.run(["xattr", "-cr", str(new_dest)], check=False, stdin=subprocess.DEVNULL)
+    (new_dest / "Contents" / "MacOS" / "agent-deck").chmod(0o755)
+    subprocess.run(
+        ["codesign", "--force", "--deep", "--sign", "-", str(new_dest)],
+        check=False, stdin=subprocess.DEVNULL,
+    )
+    verify = subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", str(new_dest)],
+        capture_output=True, stdin=subprocess.DEVNULL,
+    )
+    if verify.returncode != 0:
+        raise RuntimeError(
+            f"Code signature verification failed for {label} -- aborting "
+            f"before replacing the current install. Details: "
+            f"{verify.stderr.decode(errors='replace').strip()}"
+        )
+
+
+def _atomic_swap(new_dest: Path, dest: Path) -> None:
+    """Swap new_dest into dest's path, handling the same edge cases on
+    every caller: a stale symlink from an old layout, an existing
+    directory, and Windows' refusal to recreate a file at a path whose
+    last handle (the running process itself) hasn't closed yet."""
+    if dest.is_symlink():
+        dest.unlink()
+    elif dest.is_dir():
+        shutil.rmtree(dest)
+    elif dest.exists():
+        if sys.platform == "win32":
+            # This process's own exe is `dest` (or its parent, if this
+            # script is running inside an agy session spawned by it) —
+            # Windows lets you DELETE or RENAME a running exe (the OS
+            # loader opens it with FILE_SHARE_DELETE), but it won't let
+            # you create a new file at that same path until the last
+            # handle closes (i.e. until the user restarts): a plain
+            # dest.unlink() here "succeeds" but the shutil.move() right
+            # after it then fails with "Access is denied". Renaming the
+            # old exe out of the way first frees the original path
+            # immediately, since we're no longer touching the
+            # pending-delete file at all.
+            old_dest = dest.with_name(dest.name + ".old")
+            if old_dest.exists():
+                try:
+                    old_dest.unlink()
+                except OSError:
+                    pass  # leftover from a prior update; harmless, ignore
+            dest.rename(old_dest)
+        else:
+            dest.unlink()
+    shutil.move(str(new_dest), str(dest))
+
+
 def apply(channel: str = "prod") -> None:
     release = _fetch_release(channel)
     latest_tag = release["tag_name"]
@@ -238,63 +313,9 @@ def apply(channel: str = "prod") -> None:
             )
 
         if sys.platform != "win32":
-            subprocess.run(["xattr", "-cr", str(new_dest)], check=False, stdin=subprocess.DEVNULL)
-            (new_dest / "Contents" / "MacOS" / "agent-deck").chmod(0o755)
-            # Defensive ad-hoc re-sign over the final bundle (an upstream CI
-            # signing bug once shipped a bundle whose resource seal predated
-            # Contents/Resources — harmless no-op on correctly-signed builds).
-            subprocess.run(
-                ["codesign", "--force", "--deep", "--sign", "-", str(new_dest)],
-                check=False, stdin=subprocess.DEVNULL,
-            )
-            # Gate: confirmed for real (2026-07-23) that an invalid signature
-            # here means macOS refuses to even launch the app ("is damaged
-            # and can't be opened", error -47, with NO user override
-            # available) -- a materially worse failure than the normal
-            # "unidentified developer" Gatekeeper prompt, which DOES offer an
-            # Open Anyway override once the signature itself verifies. Better
-            # to keep the current, working install than swap in a bundle
-            # that can never launch at all.
-            verify = subprocess.run(
-                ["codesign", "--verify", "--deep", "--strict", str(new_dest)],
-                capture_output=True, stdin=subprocess.DEVNULL,
-            )
-            if verify.returncode != 0:
-                raise RuntimeError(
-                    f"Code signature verification failed for the downloaded "
-                    f"{latest_tag} build -- aborting before replacing the "
-                    f"current install. Details: "
-                    f"{verify.stderr.decode(errors='replace').strip()}"
-                )
+            _verify_mac_signature(new_dest, f"the downloaded {latest_tag} build")
 
-        if dest.is_symlink():
-            dest.unlink()
-        elif dest.is_dir():
-            shutil.rmtree(dest)
-        elif dest.exists():
-            if sys.platform == "win32":
-                # This process's own exe is `dest` (or its parent, if this
-                # script is running inside an agy session spawned by it) —
-                # Windows lets you DELETE or RENAME a running exe (the OS
-                # loader opens it with FILE_SHARE_DELETE), but it won't let
-                # you create a new file at that same path until the last
-                # handle closes (i.e. until the user restarts): a plain
-                # dest.unlink() here "succeeds" but the shutil.move() right
-                # after it then fails with "Access is denied". Renaming the
-                # old exe out of the way first frees the original path
-                # immediately, since we're no longer touching the
-                # pending-delete file at all.
-                old_dest = dest.with_name(dest.name + ".old")
-                if old_dest.exists():
-                    try:
-                        old_dest.unlink()
-                    except OSError:
-                        pass  # leftover from a prior update; harmless, ignore
-                dest.rename(old_dest)
-            else:
-                dest.unlink()
-        shutil.move(str(new_dest), str(dest))
-
+        _atomic_swap(new_dest, dest)
         _install_python_payload(staging)
 
     _marker_path(dest_name).write_text(latest_tag)
@@ -302,29 +323,215 @@ def apply(channel: str = "prod") -> None:
     print("  Restart the app to use the new version.")
 
 
+# ── Org (Google Drive) channel ───────────────────────────────────────────
+#
+# Distinct from the GitHub channels above: this fetches the config-bundled
+# internal distribution ZIP that package_release.py builds and uploads to a
+# fixed Drive file (config.toml's [drive] org_release_prod_file_id /
+# org_release_test_file_id -- see the Tauri menu's "Update to Org
+# Latest/Test" items, which pass the resolved file ID in via
+# --drive-file-id). Unlike the GitHub path, this needs Google's OAuth
+# libraries, so it's the one thing in this file that isn't pure-stdlib --
+# see _reexec_with_venv_for_drive_mode below, invoked only when actually
+# needed.
+
+def _drive_marker_path(dest_name: str) -> Path:
+    return PROJECT_ROOT / f"{dest_name}.drive-source.json"
+
+
+def _reexec_with_venv_for_drive_mode():
+    """The plain GitHub check/apply path stays pure-stdlib on purpose (see
+    module docstring: this script must work even before/without a venv).
+    Only re-exec under the venv's python when --drive-file-id is actually
+    present on the command line."""
+    if "--drive-file-id" not in sys.argv:
+        return
+    try:
+        import googleapiclient  # noqa: F401
+        return  # already importable (already in venv, or installed globally)
+    except ImportError:
+        pass
+    if sys.platform == "win32":
+        venv_python = PROJECT_ROOT / "venv" / "Scripts" / "python.exe"
+    else:
+        venv_python = PROJECT_ROOT / "venv" / "bin" / "python3"
+    if not venv_python.exists():
+        print("[ERROR] venv not found. Run setup first.")
+        sys.exit(1)
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    if sys.platform == "win32":
+        sys.exit(subprocess.run([str(venv_python)] + sys.argv).returncode)
+    else:
+        os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+
+def _get_drive_service():
+    sys.path.insert(0, str(PROJECT_ROOT / "python"))
+    from config import OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, USER_EMAIL  # noqa: E402
+    from scripts.auth import run_auth_flow  # noqa: E402
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    client_config = {
+        "installed": {
+            "client_id": OAUTH_CLIENT_ID,
+            "client_secret": OAUTH_CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+    # Shared with skills_catalog.py/drive_upload.py/backup_config.py -- same
+    # scope, same token cache, so authorizing once via any of them covers all.
+    token_path = Path.home() / ".gemini" / "agent_ui_library_token.json"
+    scopes = ["https://www.googleapis.com/auth/drive"]
+
+    creds = None
+    if token_path.exists():
+        creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_config(client_config, scopes)
+            creds = run_auth_flow(flow, login_hint=USER_EMAIL or None,
+                                   purpose="agent-deck 組織内アップデート / Org update")
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(creds.to_json())
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+
+def check_drive(file_id: str) -> tuple[bool, str, str]:
+    """Return (update_available, installed_marker, latest_marker) for the
+    org's Drive-hosted, config-bundled distribution ZIP. Uses the Drive
+    file's modifiedTime as the "version" -- there's no release tag for a
+    single mutable file that package_release.py overwrites in place on
+    every --test/--prod run."""
+    service = _get_drive_service()
+    meta = service.files().get(
+        fileId=file_id, fields="modifiedTime", supportsAllDrives=True
+    ).execute()
+    latest_modified = meta["modifiedTime"]
+
+    marker = _drive_marker_path(_dest_name())
+    installed_modified = ""
+    if marker.exists():
+        try:
+            stored = json.loads(marker.read_text())
+        except (json.JSONDecodeError, OSError):
+            stored = {}
+        if stored.get("file_id") == file_id:
+            installed_modified = stored.get("modifiedTime", "")
+
+    return (installed_modified != latest_modified, installed_modified, latest_modified)
+
+
+def _download_drive_media(service, file_id: str, dest_path: Path) -> None:
+    from googleapiclient.http import MediaIoBaseDownload
+    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
+    with open(dest_path, "wb") as fh:
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+
+
+def apply_drive(file_id: str) -> None:
+    service = _get_drive_service()
+    meta = service.files().get(
+        fileId=file_id, fields="modifiedTime", supportsAllDrives=True
+    ).execute()
+    latest_modified = meta["modifiedTime"]
+
+    dest_name = _dest_name()
+    dest = PROJECT_ROOT / dest_name
+    upstream_name = "agent-deck.exe" if sys.platform == "win32" else "agent-deck.app"
+
+    print("  Downloading org build from Google Drive...")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        zip_path = tmp_path / "agent-deck-org.zip"
+        _download_drive_media(service, file_id, zip_path)
+
+        staging = tmp_path / "extracted"
+        staging.mkdir()
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(staging)
+
+        new_dest = staging / upstream_name
+        if not new_dest.exists():
+            raise RuntimeError(
+                f"Drive ZIP did not contain {upstream_name} -- "
+                f"was it built by package_release.py?"
+            )
+
+        if sys.platform != "win32":
+            _verify_mac_signature(new_dest, "the org build downloaded from Drive")
+
+        _atomic_swap(new_dest, dest)
+        _install_python_payload(staging)
+
+        # The org's config-bundled ZIP is the one place config.toml itself
+        # ships -- refresh the local copy so org-wide config changes (Drive
+        # file IDs, OAuth creds, company settings) propagate the same way
+        # the app/skills do, not just on a fresh install.
+        bundled_config = staging / "config.toml"
+        if bundled_config.exists():
+            shutil.copy(bundled_config, PROJECT_ROOT / "config.toml")
+
+    _drive_marker_path(dest_name).write_text(json.dumps({
+        "file_id": file_id,
+        "modifiedTime": latest_modified,
+    }))
+    print(f"  Org build installed to {dest}.")
+    print("  Restart the app to use the new version.")
+
+
 def _usage():
-    print("Usage: self_update.py [check|apply] [--test] [--json]")
+    print("Usage: self_update.py [check|apply] [--test] [--json] [--drive-file-id ID]")
     sys.exit(1)
 
 
 if __name__ == "__main__":
+    _reexec_with_venv_for_drive_mode()
+
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
     rest = sys.argv[2:]
+
+    drive_file_id = None
+    if "--drive-file-id" in rest:
+        idx = rest.index("--drive-file-id")
+        if idx + 1 >= len(rest):
+            print("[ERROR] --drive-file-id requires a value")
+            sys.exit(1)
+        drive_file_id = rest[idx + 1]
+
     channel = "test" if "--test" in rest else "prod"
+
     if cmd == "check":
-        available, installed, latest = check(channel)
+        if drive_file_id:
+            available, installed, latest = check_drive(drive_file_id)
+            label = "org"
+        else:
+            available, installed, latest = check(channel)
+            label = channel
         if "--json" in rest:
             print(json.dumps({
                 "update_available": available,
                 "installed_tag": installed,
                 "latest_tag": latest,
-                "channel": channel,
+                "channel": label,
             }))
         elif available:
-            print(f"Update available ({channel}): {installed or 'unknown'} -> {latest}")
+            print(f"Update available ({label}): {installed or 'unknown'} -> {latest}")
         else:
-            print(f"Already up to date ({channel}): {latest}")
+            print(f"Already up to date ({label}): {latest}")
     elif cmd == "apply":
-        apply(channel)
+        if drive_file_id:
+            apply_drive(drive_file_id)
+        else:
+            apply(channel)
     else:
         _usage()

@@ -121,10 +121,12 @@ function App() {
     latest_version: null,
     update_available: false,
   });
-  // Which channel selfUpdateStatus/handleUpdateSelf refer to -- set whenever
-  // a check happens (from either "Check for agent-deck Updates..." menu
-  // item), so applying always targets the channel that was just checked.
-  const [selfUpdateChannel, setSelfUpdateChannel] = useState<"prod" | "test">("prod");
+  // Which of the 3 Update submenu items (see menu.rs) selfUpdateStatus/
+  // handleUpdateSelf refer to -- set whenever a check happens, so applying
+  // always targets the item that was just checked. "github" only appears
+  // when neither org Drive channel is configured in config.toml; otherwise
+  // only "org-prod"/"org-test" are ever offered.
+  const [selfUpdateKind, setSelfUpdateKind] = useState<"github" | "org-prod" | "org-test">("github");
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(() => {
     const saved = localStorage.getItem("autoCheckUpdate");
     return saved !== "false"; // Default to true
@@ -243,11 +245,11 @@ function App() {
   // checkUpdateStatus above) so an explicit, user-triggered check can report
   // "already up to date" -- there's no startup auto-check for this one to
   // silently fall back to.
-  const checkSelfUpdateStatus = useCallback(async (channel: "prod" | "test") => {
+  const checkSelfUpdateStatus = useCallback(async (kind: "github" | "org-prod" | "org-test") => {
     try {
-      const res = await invoke<UpdateStatus>("check_self_update", { channel });
+      const res = await invoke<UpdateStatus>("check_self_update", { kind });
       setSelfUpdateStatus(res);
-      setSelfUpdateChannel(channel);
+      setSelfUpdateKind(kind);
       return res;
     } catch (e) {
       console.error("Failed to check agent-deck update:", e);
@@ -255,15 +257,18 @@ function App() {
     }
   }, []);
 
-  // "Check for agent-deck Updates..." / "...(Test)..." native menu items.
-  // Unlike the agy auto-check above, this is always an explicit user action,
-  // so an "already up to date" result needs its own feedback rather than
+  // The Update submenu's items (see menu.rs -- exactly one of "github" or
+  // both org items is ever shown, depending on config.toml). Unlike the agy
+  // auto-check above, this is always an explicit user action, so an
+  // "already up to date" result needs its own feedback rather than
   // silently doing nothing.
   useEffect(() => {
     const unsub = subscribeToTauriEvent(
       listen<string>("check-self-update-requested", (event) => {
-        const channel = event.payload === "test" ? "test" : "prod";
-        checkSelfUpdateStatus(channel).then((res) => {
+        const kind = event.payload === "org-prod" || event.payload === "org-test"
+          ? event.payload
+          : "github";
+        checkSelfUpdateStatus(kind).then((res) => {
           if (res && !res.update_available) {
             alert(t("selfUpdateUpToDate"));
           }
@@ -464,7 +469,7 @@ function App() {
       setIsSelfUpdating(true);
 
       const updateCmd = await invoke<{ command: string; args: string[] }>("get_self_update_command", {
-        channel: selfUpdateChannel,
+        kind: selfUpdateKind,
       });
 
       await invoke("start_pty", {
@@ -611,7 +616,7 @@ function App() {
         }}>
           <div>
             {t("selfUpdateAvailableMsg").replace("{latest}", selfUpdateStatus.latest_version || "").replace("{current}", selfUpdateStatus.current_version || "")}
-            {selfUpdateChannel === "test" && (
+            {selfUpdateKind === "org-test" && (
               <span style={{ fontSize: "0.75rem", color: "#94a3b8", marginLeft: "12px" }}>
                 {t("selfUpdateTestChannelNote")}
               </span>
