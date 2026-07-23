@@ -38,6 +38,24 @@ def _fake_release(tag: str, asset_url: str = "https://example.com/asset.zip") ->
     }
 
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self._body = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self._body
+
+
+def _fake_urlopen(payload):
+    return _FakeResponse(payload)
+
+
 def _make_fake_zip(zip_path: Path) -> None:
     name = "agent-deck.exe" if sys.platform == "win32" else "agent-deck.app"
     with zipfile.ZipFile(zip_path, "w") as zf:
@@ -67,6 +85,35 @@ class TestCheck:
         available, installed, latest = su.check()
         assert available is False
         assert installed == "v0.1.0"
+
+
+class TestChannel:
+    """--test walks the plain /releases list for the newest pre-release,
+    entirely separate from the prod path's /releases/latest (which GitHub
+    itself excludes pre-releases from)."""
+
+    def test_check_test_channel_uses_prerelease_fetch_not_latest(self, project_root, monkeypatch):
+        monkeypatch.setattr(su, "_fetch_latest_release", lambda: _fake_release("v0.1.0"))
+        monkeypatch.setattr(su, "_fetch_latest_prerelease", lambda: _fake_release("v0.2.0-rc1"))
+        available, installed, latest = su.check("test")
+        assert available is True
+        assert latest == "v0.2.0-rc1"
+
+    def test_fetch_latest_prerelease_skips_non_prerelease_entries(self, monkeypatch):
+        releases = [
+            {**_fake_release("v0.2.0"), "prerelease": False},
+            {**_fake_release("v0.2.0-rc2"), "prerelease": True},
+            {**_fake_release("v0.2.0-rc1"), "prerelease": True},
+        ]
+        monkeypatch.setattr(su.urllib.request, "urlopen", lambda *a, **k: _fake_urlopen(releases))
+        result = su._fetch_latest_prerelease()
+        assert result["tag_name"] == "v0.2.0-rc2"  # first (newest) prerelease in the list
+
+    def test_fetch_latest_prerelease_raises_when_none_found(self, monkeypatch):
+        releases = [{**_fake_release("v0.2.0"), "prerelease": False}]
+        monkeypatch.setattr(su.urllib.request, "urlopen", lambda *a, **k: _fake_urlopen(releases))
+        with pytest.raises(RuntimeError):
+            su._fetch_latest_prerelease()
 
 
 class TestApply:

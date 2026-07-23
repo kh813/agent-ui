@@ -53,9 +53,19 @@ running binary's open file — it replaces it on disk and asks the user to
 relaunch. It does not attempt a hot in-place self-replace.
 
 Usage:
-  python3 self_update.py check          # print whether an update is available
-  python3 self_update.py check --json   # same, as a single JSON line (for callers like the Tauri menu)
-  python3 self_update.py apply          # download and install the latest release
+  python3 self_update.py check              # print whether an update is available (prod channel)
+  python3 self_update.py check --json       # same, as a single JSON line (for callers like the Tauri menu)
+  python3 self_update.py apply              # download and install the latest release (prod channel)
+  python3 self_update.py check --test       # same, but against the latest pre-release
+  python3 self_update.py apply --test       # download and install the latest pre-release
+
+Channels: "prod" (default) is GitHub's /releases/latest, which by GitHub's
+own definition excludes pre-releases. "--test" walks the plain /releases
+list for the newest release tagged as a pre-release (see release.yml's
+"determine release channel" step for how a tag becomes one). apply()'s own
+tag-equality check means switching channels back and forth just works,
+including "downgrading" from a test build's tag back to the current prod
+tag.
 """
 import json
 import shutil
@@ -69,6 +79,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _REPO = "kh813/agent-deck"  # renamed from kh813/agent-ui 2026-07-16 (old URL 301-redirects)
 _API_LATEST = f"https://api.github.com/repos/{_REPO}/releases/latest"
+_API_RELEASES = f"https://api.github.com/repos/{_REPO}/releases"
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -121,9 +132,30 @@ def _fetch_latest_release() -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def check() -> tuple[bool, str, str]:
-    """Return (update_available, installed_tag, latest_tag)."""
-    release = _fetch_latest_release()
+def _fetch_latest_prerelease() -> dict:
+    """Return the newest pre-release (a tag with a semver prerelease suffix,
+    e.g. v0.0.22-rc1 -- see release.yml). GitHub's /releases/latest endpoint
+    excludes pre-releases by definition, so this walks the plain releases
+    list instead, which the API already returns newest-first."""
+    req = urllib.request.Request(
+        _API_RELEASES, headers={"Accept": "application/vnd.github+json"}
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        releases = json.loads(resp.read().decode("utf-8"))
+    for release in releases:
+        if release.get("prerelease"):
+            return release
+    raise RuntimeError(f"No pre-release found among {_REPO}'s releases")
+
+
+def _fetch_release(channel: str) -> dict:
+    return _fetch_latest_prerelease() if channel == "test" else _fetch_latest_release()
+
+
+def check(channel: str = "prod") -> tuple[bool, str, str]:
+    """Return (update_available, installed_tag, latest_tag) for the given
+    channel ("prod" = latest stable release, "test" = latest pre-release)."""
+    release = _fetch_release(channel)
     latest_tag = release["tag_name"]
     installed_tag = _installed_tag(_dest_name())
     return (installed_tag != latest_tag, installed_tag, latest_tag)
@@ -160,8 +192,8 @@ def _install_python_payload(staging: Path) -> None:
         shutil.move(str(personal_backup), str(dest_python / "skills-personal"))
 
 
-def apply() -> None:
-    release = _fetch_latest_release()
+def apply(channel: str = "prod") -> None:
+    release = _fetch_release(channel)
     latest_tag = release["tag_name"]
     dest_name = _dest_name()
     installed_tag = _installed_tag(dest_name)
@@ -252,25 +284,28 @@ def apply() -> None:
 
 
 def _usage():
-    print("Usage: self_update.py [check|apply]")
+    print("Usage: self_update.py [check|apply] [--test] [--json]")
     sys.exit(1)
 
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
+    rest = sys.argv[2:]
+    channel = "test" if "--test" in rest else "prod"
     if cmd == "check":
-        available, installed, latest = check()
-        if "--json" in sys.argv[2:]:
+        available, installed, latest = check(channel)
+        if "--json" in rest:
             print(json.dumps({
                 "update_available": available,
                 "installed_tag": installed,
                 "latest_tag": latest,
+                "channel": channel,
             }))
         elif available:
-            print(f"Update available: {installed or 'unknown'} -> {latest}")
+            print(f"Update available ({channel}): {installed or 'unknown'} -> {latest}")
         else:
-            print(f"Already up to date: {latest}")
+            print(f"Already up to date ({channel}): {latest}")
     elif cmd == "apply":
-        apply()
+        apply(channel)
     else:
         _usage()

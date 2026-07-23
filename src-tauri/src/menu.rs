@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 const THEME_MENU_ID_PREFIX: &str = "theme:";
 const AUTO_CHECK_UPDATE_MENU_ID: &str = "settings:auto-check-update";
 const CHECK_SELF_UPDATE_MENU_ID: &str = "settings:check-self-update";
+const CHECK_SELF_UPDATE_TEST_MENU_ID: &str = "settings:check-self-update-test";
 
 // Keep in sync with the theme ids/names in src/utils/themes.ts
 const THEMES: &[(&str, &str)] = &[
@@ -67,11 +68,22 @@ pub fn build_menu(
         true,
         None::<&str>,
     )?;
+    // Test channel: latest GitHub pre-release (see release.yml's "determine
+    // release channel" step and self_update.py's --test flag) instead of
+    // /releases/latest. Lets someone flip back and forth between a
+    // pre-release build and production without touching a terminal.
+    let check_self_update_test_item = MenuItem::with_id(
+        handle,
+        CHECK_SELF_UPDATE_TEST_MENU_ID,
+        "Check for agent-deck Updates (Test)...",
+        true,
+        None::<&str>,
+    )?;
     let settings_submenu = Submenu::with_items(
         handle,
         "Settings",
         true,
-        &[&auto_check_update_item, &check_self_update_item],
+        &[&auto_check_update_item, &check_self_update_item, &check_self_update_test_item],
     )?;
 
     // Place Theme/Settings just before Help, matching where most apps put extra top-level menus.
@@ -128,7 +140,12 @@ pub fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 
     if id == CHECK_SELF_UPDATE_MENU_ID {
-        let _ = app.emit("check-self-update-requested", ());
+        let _ = app.emit("check-self-update-requested", "prod");
+        return;
+    }
+
+    if id == CHECK_SELF_UPDATE_TEST_MENU_ID {
+        let _ = app.emit("check-self-update-requested", "test");
     }
 }
 

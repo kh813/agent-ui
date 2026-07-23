@@ -30,7 +30,9 @@ fn self_update_script_path() -> std::path::PathBuf {
         .join("self_update.py")
 }
 
-pub fn check_self_update_internal() -> Result<UpdateStatus, String> {
+// channel is "prod" (default, GitHub's /releases/latest) or "test" (newest
+// pre-release) -- see self_update.py's own module docstring for the split.
+pub fn check_self_update_internal(channel: &str) -> Result<UpdateStatus, String> {
     let no_update = UpdateStatus {
         current_version: None,
         latest_version: None,
@@ -39,6 +41,9 @@ pub fn check_self_update_internal() -> Result<UpdateStatus, String> {
 
     let mut cmd = Command::new(python_bin());
     cmd.arg(self_update_script_path()).arg("check").arg("--json");
+    if channel == "test" {
+        cmd.arg("--test");
+    }
     cmd.current_dir(get_default_cwd());
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
@@ -83,24 +88,28 @@ pub fn check_self_update_internal() -> Result<UpdateStatus, String> {
     })
 }
 
-pub fn get_self_update_command_internal() -> InstallCommand {
+pub fn get_self_update_command_internal(channel: &str) -> InstallCommand {
+    let mut args = vec![
+        self_update_script_path().to_string_lossy().to_string(),
+        "apply".to_string(),
+    ];
+    if channel == "test" {
+        args.push("--test".to_string());
+    }
     InstallCommand {
         command: python_bin().to_string(),
-        args: vec![
-            self_update_script_path().to_string_lossy().to_string(),
-            "apply".to_string(),
-        ],
+        args,
     }
 }
 
 // --- Tauri Command Wrappers ---
 
 #[tauri::command]
-pub async fn check_self_update() -> Result<UpdateStatus, String> {
-    check_self_update_internal()
+pub async fn check_self_update(channel: String) -> Result<UpdateStatus, String> {
+    check_self_update_internal(&channel)
 }
 
 #[tauri::command]
-pub async fn get_self_update_command() -> Result<InstallCommand, String> {
-    Ok(get_self_update_command_internal())
+pub async fn get_self_update_command(channel: String) -> Result<InstallCommand, String> {
+    Ok(get_self_update_command_internal(&channel))
 }
