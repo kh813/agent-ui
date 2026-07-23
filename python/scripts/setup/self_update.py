@@ -247,6 +247,25 @@ def apply(channel: str = "prod") -> None:
                 ["codesign", "--force", "--deep", "--sign", "-", str(new_dest)],
                 check=False, stdin=subprocess.DEVNULL,
             )
+            # Gate: confirmed for real (2026-07-23) that an invalid signature
+            # here means macOS refuses to even launch the app ("is damaged
+            # and can't be opened", error -47, with NO user override
+            # available) -- a materially worse failure than the normal
+            # "unidentified developer" Gatekeeper prompt, which DOES offer an
+            # Open Anyway override once the signature itself verifies. Better
+            # to keep the current, working install than swap in a bundle
+            # that can never launch at all.
+            verify = subprocess.run(
+                ["codesign", "--verify", "--deep", "--strict", str(new_dest)],
+                capture_output=True, stdin=subprocess.DEVNULL,
+            )
+            if verify.returncode != 0:
+                raise RuntimeError(
+                    f"Code signature verification failed for the downloaded "
+                    f"{latest_tag} build -- aborting before replacing the "
+                    f"current install. Details: "
+                    f"{verify.stderr.decode(errors='replace').strip()}"
+                )
 
         if dest.is_symlink():
             dest.unlink()

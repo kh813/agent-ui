@@ -150,6 +150,23 @@ def build_package(channel: str, staging: Path, config_toml: Path = None) -> Path
             ["codesign", "--force", "--deep", "--sign", "-", str(merged / "agent-deck.app")],
             check=False, stdin=subprocess.DEVNULL,
         )
+        # Gate: confirmed for real (2026-07-23) that an invalid signature
+        # here means macOS refuses to even launch the app ("is damaged and
+        # can't be opened", error -47, with NO user override available) --
+        # worse than the normal "unidentified developer" Gatekeeper prompt,
+        # which DOES offer an Open Anyway override once the signature itself
+        # verifies. Abort before zipping/uploading a build that can never
+        # launch, rather than shipping it and finding out from a user report.
+        verify = subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(merged / "agent-deck.app")],
+            capture_output=True, stdin=subprocess.DEVNULL,
+        )
+        if verify.returncode != 0:
+            raise RuntimeError(
+                f"Code signature verification failed for the merged "
+                f"agent-deck.app ({tag}) -- aborting before packaging/upload. "
+                f"Details: {verify.stderr.decode(errors='replace').strip()}"
+            )
 
     config_toml = config_toml or (PROJECT_ROOT / "config.toml")
     if not config_toml.exists():

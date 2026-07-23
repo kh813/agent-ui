@@ -144,6 +144,34 @@ class TestApply:
         assert dest.exists()
         assert marker.read_text().strip() == "v0.2.0"
 
+    def test_aborts_when_signature_verification_fails(self, project_root, monkeypatch):
+        """Confirmed for real (2026-07-23): an invalid signature after the
+        defensive re-sign means macOS refuses to even launch the app ("is
+        damaged", error -47, no user override) -- apply() must not swap
+        this in over a working install."""
+        if sys.platform == "win32":
+            pytest.skip("codesign verification only applies on macOS")
+
+        monkeypatch.setattr(su, "_fetch_latest_release", lambda: _fake_release("v0.2.0"))
+
+        def fake_run(cmd, *a, **kw):
+            if cmd[0] == "curl":
+                _make_fake_zip(Path(cmd[-1]))
+                return subprocess.CompletedProcess(cmd, 0)
+            if cmd[0] == "codesign" and cmd[1] == "--verify":
+                return subprocess.CompletedProcess(cmd, 1, stderr=b"invalid signature")
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(su.subprocess, "run", fake_run)
+
+        with pytest.raises(RuntimeError, match="signature verification failed"):
+            su.apply()
+
+        assert not (project_root / _dest_name()).exists(), (
+            "a failed signature check must abort before the atomic swap, "
+            "leaving the (nonexistent, in this test) prior install alone"
+        )
+
     def test_curl_has_connect_and_max_time_limits(self, project_root, monkeypatch):
         """Regression test: a stalled network connection (no active refusal,
         just silence) must not hang apply() forever — hit for real via a

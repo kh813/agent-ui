@@ -113,6 +113,26 @@ class TestBuildPackage:
         with pytest.raises(RuntimeError, match="agent-deck-win.zip"):
             pr.build_package("test", tmp_path, config_toml=fake_org_config)
 
+    def test_aborts_when_signature_verification_fails(self, tmp_path, fake_org_config, monkeypatch):
+        """Confirmed for real (2026-07-23): an invalid signature after the
+        merge/re-sign round-trip means macOS refuses to even launch the app
+        ("is damaged", error -47, no user override) -- must abort before
+        zipping/uploading a build that can never launch."""
+        monkeypatch.setattr(su, "_fetch_release", lambda channel: _fake_release("v0.0.22-rc1"))
+        monkeypatch.setattr(pr, "_download", lambda url, dest: (
+            _make_mac_zip(dest) if "mac.zip" in url else _make_win_zip(dest)
+        ))
+
+        def fake_run(cmd, *a, **kw):
+            if cmd[0] == "codesign" and cmd[1] == "--verify":
+                return subprocess.CompletedProcess(cmd, 1, stderr=b"invalid signature")
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(pr.subprocess, "run", fake_run)
+
+        with pytest.raises(RuntimeError, match="signature verification failed"):
+            pr.build_package("test", tmp_path, config_toml=fake_org_config)
+
     def test_missing_config_toml_raises(self, tmp_path, monkeypatch, no_op_signing):
         monkeypatch.setattr(su, "_fetch_release", lambda channel: _fake_release("v0.0.22-rc1"))
         monkeypatch.setattr(pr, "_download", lambda url, dest: (
