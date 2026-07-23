@@ -337,6 +337,23 @@ For a full manual repair, re-extract the GitHub Releases ZIP over the existing f
 
 Since this directory is itself the `kh813/agent-deck` development environment, there's no separate "track/pin to upstream" concept. Regular development proceeds via commits/pushes to `main`; a release is cut by pushing a `vX.Y.Z` tag, which `.github/workflows/release.yml` builds, signs, and publishes automatically (see CLAUDE.md). Keep version numbers in sync across `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
 
+#### テスト→本番の昇格フロー / Test-Then-Promote Flow
+
+先にテスト版を配って動作確認し、問題なければ本番へ、という流れが必要な場合は、タグ名にsemverのプレリリース識別子（ハイフン付き）を使ってください：
+
+```bash
+git tag -a v0.0.22-rc1 -m "Release candidate for v0.0.22"
+git push origin v0.0.22-rc1
+```
+
+`release.yml` はタグが `vX.Y.Z-なにか` の形（例: `-rc1`・`-test1`・`-beta.2`）にマッチする場合、そのリリースを GitHub 上で **pre-release** としてマークします。`self_update.py` は GitHub の `/releases/latest` API だけを見ますが、これは仕様上「pre-releaseでもdraftでもない最新リリース」しか返しません。つまり pre-release は「Check for agent-deck Updates...」メニューにも既存インストールの自動チェックにも一切現れず、通常ユーザーへは配信されません。
+
+**テストする側 / For testers:** GitHub の Releases ページから該当バージョンの ZIP を手動でダウンロードし、既存インストールの上に展開してください（§7a・修復手順と同じ要領）。
+
+**本番への昇格 / Promoting to production:** 検証OKになったら、GitHub の当該リリースを編集し、「Set as a pre-release」のチェックを外して保存するだけです。**再ビルド・再タグは不要** — 検証したのと全く同じバイナリがそのまま本番配信されます。次にメニューから確認したユーザー・次回起動時に自動チェックしたユーザーへ、そのまま配信されます。
+
+> タグ名がそのまま（例: `v0.0.22-rc1`）本番リリースとして残ることに違和感がある場合は、代わりに検証後もう一度クリーンな `vX.Y.Z` タグを打って再ビルドする運用でも構いません。ただしその場合は「テストしたバイナリ」と「実際に配信するバイナリ」が別物（同じソースからの再ビルド）になる点に注意してください。
+
 ```bash
 # リリース一覧 / Release list
 open https://github.com/kh813/agent-deck/releases

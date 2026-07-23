@@ -24,6 +24,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Test/prod promotion flow: a tag with a semver prerelease suffix
+      # (e.g. v0.0.22-rc1) publishes as a GitHub "pre-release". self_update.py
+      # only ever queries GitHub's /releases/latest endpoint, which by
+      # GitHub's own definition skips pre-releases -- so a pre-release build
+      # never reaches the "Check for agent-deck Updates..." menu action or
+      # any existing install automatically. Testers install it manually
+      # (download the ZIP from the Releases page and re-extract over an
+      # existing install, same as the documented repair flow). Once verified,
+      # promote it to production by editing that SAME release on GitHub and
+      # unchecking "Set as a pre-release" -- no rebuild, no new tag: the exact
+      # binary that was tested is what ships. See docs/admin_guide.md's
+      # "Cutting a Release" section for the full walkthrough.
+      - name: determine release channel
+        id: channel
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-.+$ ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: setup node
         uses: actions/setup-node@v4
         with:
@@ -135,6 +157,7 @@ jobs:
           files: |
             ${{ matrix.zip_name }}
           draft: false
+          prerelease: ${{ steps.channel.outputs.is_prerelease }}
           name: "agent-deck ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
         env:

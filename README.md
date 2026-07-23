@@ -262,3 +262,5 @@ open ./agent-deck.app
    git push origin v0.0.2
    ```
 3. GitHub Actions 上で自動的にコンパイルが走り、バイナリが ZIP にパッケージングされて自動公開されます。
+
+先にテスト版で動作確認してから本番公開したい場合は、タグ名に `v0.0.2-rc1` のようなプレリリース識別子を付けてください。GitHub 上で pre-release として公開され、既存インストールの自動アップデートには一切配信されません。詳細は [管理者ガイド「テスト→本番の昇格フロー」](docs/admin_guide.md#テスト本番の昇格フロー--test-then-promote-flow) を参照してください。
