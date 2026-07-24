@@ -24,8 +24,9 @@ org_release_test_file_id = ""
 org_release_prod_file_id = ""
 
 [user]
-# Your email address. If omitted, auto-detected from OS login name (requires
-# a wrapping project to supply [company].domain — see below).
+# Your email address (optional). Used only as an OAuth login_hint pre-fill
+# for Drive/Calendar sign-in -- if left unset, those flows still work, you
+# just pick your account manually on the sign-in screen.
 # email = "firstname.lastname@example.com"
 
 [notifications]

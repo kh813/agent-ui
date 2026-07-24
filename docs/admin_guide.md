@@ -155,7 +155,7 @@ Public, bundled skills (`python/skills/`) win over `python/skills-personal/` (in
 **`python/scripts/setup/setup.py`** (in the public repo — every reference below is to this file) is the unified entry point for maintenance operations.
 
 ```bash
-python3 python/scripts/setup/setup.py [init|config [clear-email]|trust|skills [list|rebuild|enable <name>|disable <name>]]
+python3 python/scripts/setup/setup.py [init|config|trust|skills [list|rebuild|enable <name>|disable <name>]]
 # Windows では python3 を python に読み替え / On Windows, replace python3 with python
 ```
 
@@ -221,19 +221,16 @@ python3 python/scripts/setup/setup.py skills disable <skill_name>
 
 `sync_catalog_skills()` shells out to `skills_catalog.py sync`. It's an instant no-op if `config.toml`'s `catalog_folder_id` is unset/a placeholder — zero impact on OSS users. Offline, declined auth, or a timeout all just print a warning; the rebuild continues and never blocks launch.
 
-### setup config — 設定確認・リセット / Configuration Check & Reset
+### setup config — OAuth クレデンシャル確認 / OAuth Credential Check
 
 ```bash
-# メール・OAuth クレデンシャルが未設定の場合に入力を求める（起動のたびに実行）
+# OAuth クレデンシャルが未設定の場合に入力を求める（起動のたびに実行）
 python3 python/scripts/setup/setup.py config
-
-# メールアドレスをリセットして再入力を促す
-python3 python/scripts/setup/setup.py config clear-email
 ```
 
-`preflight.sh`/`.bat` は agy からstdinなしで呼ばれるため、`setup_config()` の `input()` 呼び出しは EOF を空文字列として扱う `_prompt()` ヘルパー経由です（未設定のまま次回に持ち越されるだけで、クラッシュしません）。
+`preflight.sh`/`.bat` は agy からstdinなしで呼ばれるため、`setup_config()` の `input()` 呼び出しは EOF を空文字列として扱う `_prompt()` ヘルパー経由です（未設定のまま次回に持ち越されるだけで、クラッシュしません）。メールアドレスの入力プロンプトは以前ここにありましたが廃止しました — 実際の Google アカウント選択は agy 自身のサインインや Drive/Calendar OAuth 自体のアカウント選択画面で行われるため、非対話起動（`AGENT_DECK_NONINTERACTIVE=1`）では絶対に解決しないこの確認は無意味な繰り返し表示でしかなかったためです。`[user] email`（config.toml）は手動で設定すれば引き続き OAuth の `login_hint` として使われます。
 
-`preflight.sh`/`.bat` invoke this with no stdin attached, so `setup_config()`'s `input()` calls go through a `_prompt()` helper that treats EOF as an empty answer — the field just stays unset until the next run, no crash.
+`preflight.sh`/`.bat` invoke this with no stdin attached, so `setup_config()`'s `input()` calls go through a `_prompt()` helper that treats EOF as an empty answer — the field just stays unset until the next run, no crash. The email prompt that used to live here has been removed — actual Google account selection happens at agy's own sign-in or the Drive/Calendar OAuth flow's own account picker regardless, so a prompt that could never resolve under non-interactive launches (`AGENT_DECK_NONINTERACTIVE=1`) was just pointless repeated noise. `[user] email` in config.toml is still honored as an OAuth `login_hint` pre-fill if set by hand.
 
 ### スキルカタログ管理 / Skill Catalog Management
 
@@ -423,7 +420,7 @@ cp config/config.toml.template config.toml
 | `[drive]` | `org_release_test_file_id` / `org_release_prod_file_id` | 組織内配布ZIP（`package_release.py` がアップロード。§7c）。設定するとメニューの「Update」に組織内チャネルが出現し、GitHub直取得は隠れる（§4） |
 | `[company]`（任意 / optional） | `domain` / `portal_url` / `salesforce_url` | 公開版のテンプレートには**宣言されていない**。組織向け `config.toml` がこのセクションを上乗せするオーバーレイという位置づけ |
 | `[template]` | `name` / `url` | PPTX テンプレート |
-| `[user]` | `email` | 省略時は OS ログイン名から自動判定（`[company].domain` が必要） |
+| `[user]` | `email` | 手動設定のみ。OAuth（Drive/Calendar 等）の `login_hint` として使われる。省略可 — 未設定でも各 OAuth フロー自体のアカウント選択画面で認証できる。ブラウザ自動化系スキルだけは別ロジック（`common.py` の `get_email_account()`）で OS ログイン名 + `[company].domain` から自動判定するフォールバックを持つ |
 | `[notifications]` | `chat_webhook_url` | Google Chat 通知（`notify-chat` スキルが設定を案内） |
 
 `config/__init__.py` が `tomllib`（Python 3.11+ 標準）または `tomli`（バックポート）で `config.toml` を読み込みます。

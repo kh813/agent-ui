@@ -329,9 +329,8 @@ def _prompt(msg):
 
 
 def setup_config():
-    """Prompt for missing OAuth credentials and email; save to config.toml."""
+    """Prompt for missing OAuth credentials; save to config.toml."""
     import re
-    import getpass
     if not CONFIG_PATH.exists():
         return
     text = CONFIG_PATH.read_text(encoding="utf-8")
@@ -361,42 +360,20 @@ def setup_config():
         text = CONFIG_PATH.read_text(encoding="utf-8")
         print("==> config.toml を更新しました / Saved to config.toml.")
 
-    # ── Email ──────────────────────────────────────────────────
-    if not _get("email"):
-        print("==> メールアドレスの確認 / Email address setup")
-        print("    Google 認証時に正しいアカウントを自動選択するために使用します。")
-        print("    Used to pre-select your account on the Google sign-in screen.")
-        print()
-        email = _prompt("  メールアドレス / Email: ").strip()
-
-        if email:
-            user_re  = re.compile(r'^\[user\]', re.MULTILINE)
-            email_re = re.compile(r'^(# *)?email\s*=.*$', re.MULTILINE)
-            if user_re.search(text):
-                if email_re.search(text):
-                    text = email_re.sub(f'email = "{email}"', text, count=1)
-                else:
-                    text = user_re.sub(f'[user]\nemail = "{email}"', text, count=1)
-            else:
-                text = text.rstrip() + f'\n\n[user]\nemail = "{email}"\n'
-            CONFIG_PATH.write_text(text, encoding="utf-8")
-            print(f"==> メールアドレスを保存しました / Email saved: {email}")
-
-def clear_email():
-    """Clear the email field in config.toml so setup_config() will re-prompt."""
-    import re
-    if not CONFIG_PATH.exists():
-        return
-    text = CONFIG_PATH.read_text(encoding="utf-8")
-    email_re = re.compile(r'^(# *)?email\s*=.*$', re.MULTILINE)
-    text = email_re.sub('# email = ""', text)
-    CONFIG_PATH.write_text(text, encoding="utf-8")
-    print("==> メールアドレスをリセットしました / Email cleared from config.toml.")
+    # Deliberately no email prompt here: real Google account selection
+    # always happens at actual auth time (agy's own sign-in, or the Drive/
+    # Calendar OAuth flow's account picker) regardless of this config
+    # value, and preflight.sh/.bat always run this non-interactively
+    # (AGENT_DECK_NONINTERACTIVE=1) -- _prompt() returns "" immediately, so
+    # a prompt here could never actually resolve and would just reprint on
+    # every single launch forever. [user] email in config.toml is still
+    # honored as a login_hint pre-fill (see USER_EMAIL usages) for anyone
+    # who sets it by hand.
 
 # ── entrypoint ────────────────────────────────────────────────
 
 def _usage():
-    print("Usage: setup.py [init|config [clear-email]|trust|skills [list|rebuild|enable <name>|disable <name>]]")
+    print("Usage: setup.py [init|config|trust|skills [list|rebuild|enable <name>|disable <name>]]")
     sys.exit(1)
 
 if __name__ == "__main__":
@@ -433,11 +410,7 @@ if __name__ == "__main__":
             _usage()
 
     elif cmd == "config":
-        sub = args[1] if len(args) > 1 else ""
-        if sub == "clear-email":
-            clear_email()
-        else:
-            setup_config()
+        setup_config()
 
     elif cmd == "trust":
         trust_project_folder()
